@@ -1,80 +1,116 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
-import { Address } from "@scaffold-ui/components";
 import type { NextPage } from "next";
-import { hardhat } from "viem/chains";
-import { useAccount } from "wagmi";
-import { BugAntIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { useTargetNetwork } from "~~/hooks/scaffold-eth";
 
 const Home: NextPage = () => {
-  const { address: connectedAddress } = useAccount();
-  const { targetNetwork } = useTargetNetwork();
-
   return (
-    <>
-      <div className="flex items-center flex-col grow pt-10">
-        <div className="px-5">
-          <h1 className="text-center">
-            <span className="block text-2xl mb-2">Welcome to</span>
-            <span className="block text-4xl font-bold">Scaffold-ETH 2</span>
-          </h1>
-          <div className="flex justify-center items-center space-x-2 flex-col">
-            <p className="my-2 font-medium">Connected Address:</p>
-            <Address
-              address={connectedAddress}
-              chain={targetNetwork}
-              blockExplorerAddressLink={
-                targetNetwork.id === hardhat.id ? `/blockexplorer/address/${connectedAddress}` : undefined
-              }
+    <div className="flex flex-col items-center min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 py-4">
+      {/* Header */}
+      <header className="w-full max-w-4xl px-4 mb-4">
+        <h1 className="text-2xl font-black text-center text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-500 to-red-500 tracking-tight">
+          DEMOLITION DERBY
+        </h1>
+      </header>
+
+      {/* Main content - Title Screen */}
+      <main className="w-full max-w-4xl flex flex-col items-center px-4">
+        <div className="flex flex-col items-center justify-center min-h-[600px] w-full bg-gradient-to-b from-zinc-900 via-amber-950/20 to-zinc-900 rounded-xl border-4 border-amber-900/50 relative overflow-hidden">
+          {/* Background pattern */}
+          <div className="absolute inset-0 opacity-10">
+            <div
+              className="absolute inset-0"
+              style={{
+                backgroundImage: `repeating-linear-gradient(
+                  0deg,
+                  transparent,
+                  transparent 20px,
+                  rgba(139, 69, 19, 0.5) 20px,
+                  rgba(139, 69, 19, 0.5) 22px
+                )`,
+              }}
+            />
+            <div
+              className="absolute inset-0"
+              style={{
+                backgroundImage: `repeating-linear-gradient(
+                  90deg,
+                  transparent,
+                  transparent 20px,
+                  rgba(139, 69, 19, 0.5) 20px,
+                  rgba(139, 69, 19, 0.5) 22px
+                )`,
+              }}
             />
           </div>
 
-          <p className="text-center text-lg">
-            Get started by editing{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/nextjs/app/page.tsx
-            </code>
-          </p>
-          <p className="text-center text-lg">
-            Edit your smart contract{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              YourContract.sol
-            </code>{" "}
-            in{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/hardhat/contracts
-            </code>
-          </p>
-        </div>
+          {/* Decorative elements */}
+          <div className="absolute top-8 left-8 w-16 h-16 border-4 border-amber-800/30 rounded-full" />
+          <div className="absolute top-12 right-12 w-12 h-12 border-4 border-amber-800/30 rounded-full" />
+          <div className="absolute bottom-16 left-16 w-10 h-10 border-4 border-amber-800/30 rounded-full" />
+          <div className="absolute bottom-8 right-8 w-14 h-14 border-4 border-amber-800/30 rounded-full" />
 
-        <div className="grow bg-base-300 w-full mt-16 px-8 py-12">
-          <div className="flex justify-center items-center gap-12 flex-col md:flex-row">
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <BugAntIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Tinker with your smart contract using the{" "}
-                <Link href="/debug" passHref className="link">
-                  Debug Contracts
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <MagnifyingGlassIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Explore your local transactions with the{" "}
-                <Link href="/blockexplorer" passHref className="link">
-                  Block Explorer
-                </Link>{" "}
-                tab.
-              </p>
+          {/* Title */}
+          <div className="relative z-10 text-center mb-12">
+            <h1
+              className="text-6xl md:text-8xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-amber-400 via-orange-500 to-red-600"
+              style={{
+                textShadow: "4px 4px 8px rgba(0,0,0,0.5)",
+                WebkitTextStroke: "2px rgba(0,0,0,0.3)",
+              }}
+            >
+              DEMOLITION
+            </h1>
+            <h2
+              className="text-5xl md:text-7xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 via-amber-500 to-orange-600 -mt-2"
+              style={{
+                textShadow: "3px 3px 6px rgba(0,0,0,0.5)",
+                WebkitTextStroke: "1px rgba(0,0,0,0.3)",
+              }}
+            >
+              DERBY
+            </h2>
+            <div className="mt-4 text-amber-600/80 text-lg tracking-widest uppercase font-bold">
+              Midwest Mayhem &apos;95
             </div>
           </div>
+
+          {/* Start button - navigates to derby page */}
+          <Link
+            href="/derby"
+            className="relative z-10 group px-12 py-4 bg-gradient-to-b from-red-600 to-red-800 hover:from-red-500 hover:to-red-700 text-white font-black text-2xl uppercase tracking-widest rounded-lg border-4 border-red-900 shadow-[0_6px_0_#5c1c1c,0_8px_15px_rgba(0,0,0,0.5)] hover:shadow-[0_4px_0_#5c1c1c,0_6px_10px_rgba(0,0,0,0.5)] active:shadow-[0_2px_0_#5c1c1c,0_3px_5px_rgba(0,0,0,0.5)] hover:translate-y-[2px] active:translate-y-[4px] transition-all duration-100"
+          >
+            <span className="relative">
+              Start Engine
+              <span className="absolute -right-6 top-1/2 -translate-y-1/2 text-yellow-400 group-hover:animate-pulse">
+                ▶
+              </span>
+            </span>
+          </Link>
+
+          {/* Instructions */}
+          <div className="relative z-10 mt-12 text-center text-zinc-500 text-sm max-w-md px-8">
+            <p>4 AI drivers battle until only one remains.</p>
+            <p className="mt-1">Ram opponents at high speed to deal damage!</p>
+          </div>
+
+          {/* Car silhouettes */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-8 opacity-20">
+            {["#e74c3c", "#3498db", "#2ecc71", "#f1c40f"].map((color, i) => (
+              <svg key={i} width="40" height="24" viewBox="0 0 50 28">
+                <rect x="0" y="0" width="50" height="28" fill={color} rx="4" />
+              </svg>
+            ))}
+          </div>
         </div>
-      </div>
-    </>
+      </main>
+
+      {/* Footer */}
+      <footer className="mt-8 text-zinc-600 text-sm text-center">
+        <p>Midwest Mayhem &apos;95</p>
+      </footer>
+    </div>
   );
 };
 
