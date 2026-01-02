@@ -97,6 +97,15 @@ export interface Explosion {
   duration: number;
 }
 
+export interface DamageNumber {
+  id: string;
+  position: Vector2D;
+  damage: number;
+  color: string;
+  life: number;
+  maxLife: number;
+}
+
 export interface ExplosionParticle {
   angle: number;
   distance: number;
@@ -112,6 +121,7 @@ export interface GameState {
   sparks: Spark[];
   smokeParticles: SmokeParticle[];
   explosions: Explosion[];
+  damageNumbers: DamageNumber[];
   gamePhase: "title" | "playing" | "gameover";
   winner: Car | null;
   gameTime: number;

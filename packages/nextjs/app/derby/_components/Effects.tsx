@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Car as CarType, Explosion, SmokeParticle, Spark, TireMark } from "../types";
+import { Car as CarType, DamageNumber, Explosion, SmokeParticle, Spark, TireMark } from "../types";
 
 // Tire marks on the ground
 export const TireMarks: React.FC<{ marks: TireMark[] }> = ({ marks }) => (
@@ -225,6 +225,59 @@ export const DustCloud: React.FC<{ car: CarType }> = ({ car }) => {
   );
 };
 
+// Floating damage numbers
+export const DamageNumbers: React.FC<{ damageNumbers: DamageNumber[] }> = ({ damageNumbers }) => (
+  <g>
+    {damageNumbers.map(dmg => {
+      const lifeRatio = dmg.life / dmg.maxLife;
+      const opacity = Math.min(1, lifeRatio * 2); // Fade out in second half
+      const scale = 0.8 + lifeRatio * 0.4; // Start big, shrink slightly
+
+      return (
+        <g key={dmg.id}>
+          {/* Shadow/outline for readability */}
+          <text
+            x={dmg.position.x}
+            y={dmg.position.y}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize={16 * scale}
+            fontWeight="bold"
+            fontFamily="system-ui, -apple-system, sans-serif"
+            fill="#000"
+            opacity={opacity * 0.8}
+            style={{
+              pointerEvents: "none",
+              userSelect: "none",
+            }}
+          >
+            -{dmg.damage}
+          </text>
+          {/* Main text */}
+          <text
+            x={dmg.position.x}
+            y={dmg.position.y - 1}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize={16 * scale}
+            fontWeight="bold"
+            fontFamily="system-ui, -apple-system, sans-serif"
+            fill={dmg.color}
+            opacity={opacity}
+            style={{
+              pointerEvents: "none",
+              userSelect: "none",
+              filter: "drop-shadow(0 0 2px rgba(0,0,0,0.5))",
+            }}
+          >
+            -{dmg.damage}
+          </text>
+        </g>
+      );
+    })}
+  </g>
+);
+
 const Effects = {
   TireMarks,
   Sparks,
@@ -232,6 +285,7 @@ const Effects = {
   ExplosionEffect,
   CarEffects,
   DustCloud,
+  DamageNumbers,
 };
 
 export default Effects;

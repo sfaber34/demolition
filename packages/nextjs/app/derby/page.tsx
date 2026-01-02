@@ -5,6 +5,7 @@ import {
   Arena,
   Car,
   CarEffects,
+  DamageNumbers,
   DustCloud,
   ExplosionEffect,
   GameOverScreen,
@@ -156,6 +157,9 @@ export default function DerbyPage() {
                 {gameState.explosions.map(explosion => (
                   <ExplosionEffect key={explosion.id} explosion={explosion} />
                 ))}
+
+                {/* Floating damage numbers */}
+                <DamageNumbers damageNumbers={gameState.damageNumbers} />
               </svg>
             </div>
 

@@ -15,6 +15,7 @@ import {
   CAR_CONFIG,
   CAR_NAMES,
   Car,
+  DamageNumber,
   Explosion,
   ExplosionParticle,
   GameState,
@@ -108,6 +109,7 @@ export function createInitialGameState(): GameState {
     sparks: [],
     smokeParticles: [],
     explosions: [],
+    damageNumbers: [],
     gamePhase: "title",
     winner: null,
     gameTime: 0,
@@ -171,6 +173,21 @@ function createTireMark(position: Vector2D, rotation: number): TireMark {
   };
 }
 
+// Create floating damage number
+function createDamageNumber(position: Vector2D, damage: number, color: string): DamageNumber {
+  return {
+    id: generateId(),
+    position: {
+      x: position.x + (Math.random() - 0.5) * 20,
+      y: position.y - 20,
+    },
+    damage: Math.round(damage),
+    color,
+    life: 1000,
+    maxLife: 1000,
+  };
+}
+
 // Main game update function
 export function updateGame(state: GameState, deltaTime: number): GameState {
   if (state.gamePhase !== "playing") return state;
@@ -190,6 +207,7 @@ export function updateGame(state: GameState, deltaTime: number): GameState {
     sparks: [...state.sparks],
     smokeParticles: [...state.smokeParticles],
     explosions: [...state.explosions],
+    damageNumbers: [...state.damageNumbers],
   };
   newState.gameTime += deltaTime;
 
@@ -237,6 +255,14 @@ export function updateGame(state: GameState, deltaTime: number): GameState {
           carB.damageDealt += damageA;
           carA.damageDealt += damageB;
 
+          // Create floating damage numbers
+          if (damageA >= 1) {
+            newState.damageNumbers.push(createDamageNumber(carA.position, damageA, "#ff4444"));
+          }
+          if (damageB >= 1) {
+            newState.damageNumbers.push(createDamageNumber(carB.position, damageB, "#ff4444"));
+          }
+
           // Create sparks
           const sparkCount = Math.min(15, Math.floor(collision.impactSpeed / 20));
           if (sparkCount > 0) {
@@ -266,6 +292,11 @@ export function updateGame(state: GameState, deltaTime: number): GameState {
 
       if (damage > 0) {
         car.health -= damage;
+
+        // Create floating damage number for wall hits
+        if (damage >= 1) {
+          newState.damageNumbers.push(createDamageNumber(car.position, damage, "#ffaa44"));
+        }
 
         // Create sparks
         const sparkCount = Math.min(8, Math.floor(damage / 2));
@@ -315,6 +346,15 @@ export function updateGame(state: GameState, deltaTime: number): GameState {
 
   // Update explosions
   newState.explosions = newState.explosions.filter(exp => Date.now() - exp.startTime < exp.duration);
+
+  // Update damage numbers (float up and fade out)
+  newState.damageNumbers = newState.damageNumbers
+    .map(dmg => ({
+      ...dmg,
+      position: { x: dmg.position.x, y: dmg.position.y - deltaTime * 0.05 }, // Float up
+      life: dmg.life - deltaTime,
+    }))
+    .filter(dmg => dmg.life > 0);
 
   // Check for game over
   const aliveCars = newState.cars.filter(c => c.isAlive);

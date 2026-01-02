@@ -211,35 +211,65 @@ export function checkWallCollision(car: Car): WallCollision | null {
 export function resolveCarCollision(collision: Collision): { damageA: number; damageB: number } {
   const { carA, carB, normal, penetration, impactSpeed } = collision;
 
-  // Separate cars
-  const separation = vec.mul(normal, penetration / 2 + 1);
+  // Separate cars - push them apart
+  const separation = vec.mul(normal, penetration / 2 + 2);
   carA.position = vec.sub(carA.position, separation);
   carB.position = vec.add(carB.position, separation);
 
-  // Calculate collision response
+  // Get speeds before collision
+  const speedA = vec.length(carA.velocity);
+  const speedB = vec.length(carB.velocity);
+
+  // Calculate relative velocity along collision normal
   const relVel = vec.sub(carA.velocity, carB.velocity);
   const velAlongNormal = vec.dot(relVel, normal);
 
-  // Don't resolve if velocities are separating
-  if (velAlongNormal > 0) {
-    // Apply impulse with bounce
+  // Only resolve if cars are approaching (not already separating)
+  if (velAlongNormal < 0) {
+    // Restitution - how bouncy the collision is (0 = stick together, 1 = perfect bounce)
     const restitution = PHYSICS_CONFIG.bounceRestitution;
-    const impulse = (-(1 + restitution) * velAlongNormal) / 2;
-    const impulseVec = vec.mul(normal, impulse);
 
+    // Calculate impulse magnitude using conservation of momentum
+    // For equal mass: j = -(1 + e) * relVel / 2
+    const impulseMag = (-(1 + restitution) * velAlongNormal) / 2;
+    const impulseVec = vec.mul(normal, impulseMag);
+
+    // Apply impulse - this transfers momentum
     carA.velocity = vec.add(carA.velocity, impulseVec);
     carB.velocity = vec.sub(carB.velocity, impulseVec);
+
+    // MOMENTUM TRANSFER: Faster car pushes slower car in its direction
+    // The hit car should move in the attacker's direction
+    if (speedA > speedB + 20) {
+      // Car A is the attacker - push car B in A's direction
+      const pushStrength = (speedA - speedB) * 0.4;
+      const pushDir = vec.normalize(carA.velocity);
+      carB.velocity = vec.add(carB.velocity, vec.mul(pushDir, pushStrength));
+      // Attacker loses some speed from the impact
+      carA.velocity = vec.mul(carA.velocity, 0.7);
+    } else if (speedB > speedA + 20) {
+      // Car B is the attacker - push car A in B's direction
+      const pushStrength = (speedB - speedA) * 0.4;
+      const pushDir = vec.normalize(carB.velocity);
+      carA.velocity = vec.add(carA.velocity, vec.mul(pushDir, pushStrength));
+      // Attacker loses some speed from the impact
+      carB.velocity = vec.mul(carB.velocity, 0.7);
+    } else {
+      // Similar speeds - both slow down from impact
+      carA.velocity = vec.mul(carA.velocity, 0.8);
+      carB.velocity = vec.mul(carB.velocity, 0.8);
+    }
   }
 
   // Calculate angular impulse based on contact point relative to center
   const contactToA = vec.sub(collision.contactPoint, carA.position);
   const contactToB = vec.sub(collision.contactPoint, carB.position);
 
-  // Cross product in 2D gives angular impulse
-  const angularImpulseA = (contactToA.x * normal.y - contactToA.y * normal.x) * impactSpeed * 0.002;
-  const angularImpulseB = (contactToB.x * normal.y - contactToB.y * normal.x) * impactSpeed * 0.002;
+  // Cross product in 2D gives angular impulse - increased for more spin
+  const angularImpulseA = (contactToA.x * normal.y - contactToA.y * normal.x) * impactSpeed * 0.004;
+  const angularImpulseB = (contactToB.x * normal.y - contactToB.y * normal.x) * impactSpeed * 0.004;
 
-  // Apply angular impulse (spin-out effect)
+  // Apply angular impulse (spin-out effect) - hit car spins more
   carA.angularVelocity += angularImpulseA / carA.traction;
   carB.angularVelocity -= angularImpulseB / carB.traction;
 
@@ -258,10 +288,7 @@ export function resolveCarCollision(collision: Collision): { damageA: number; da
   // Base 5 damage per collision + speed bonus
   const baseDamage = 5 + impactSpeed * CAR_CONFIG.baseDamageMultiplier * (0.4 + speedFactor * 0.6);
 
-  // Determine who hit whom (car moving faster towards collision point takes less damage)
-  const speedA = vec.length(carA.velocity);
-  const speedB = vec.length(carB.velocity);
-
+  // Use original speeds (before collision resolution) for damage calculation
   // Attacker (higher speed) deals more damage, takes less
   if (speedA > speedB + 25) {
     damageA = baseDamage * 0.2;
