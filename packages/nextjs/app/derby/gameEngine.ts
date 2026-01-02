@@ -47,15 +47,13 @@ function createCar(name: string, color: string, position: Vector2D, rotation: nu
     isAlive: true,
     width: CAR_CONFIG.width,
     height: CAR_CONFIG.height,
-    // Realistic car physics based on 0-60 times:
-    // - Demolition derby cars are often modified V8s: 5-8 seconds 0-60
-    // - At 60 FPS, that's ~300-480 frames to reach top speed
-    // - maxSpeed 120 ≈ 40 mph in arena scale (reasonable for tight arena)
-    acceleration: 0.25 * accelVariation, // ~5-7 sec to top speed (V8 beater)
-    maxSpeed: 120, // ~40 mph equivalent - realistic derby speed
-    cornering: 0.9 * corneringVariation, // Decent turning for old cars
-    traction: 0.7 * tractionVariation,
-    aiState: "seeking",
+    // Derby car physics - punchy acceleration for exciting action
+    // Fast enough to build speed quickly, but not instant
+    acceleration: 0.35 * accelVariation, // Quick acceleration for action
+    maxSpeed: 140, // Good top speed for devastating hits
+    cornering: 1.0 * corneringVariation, // Responsive turning
+    traction: 0.75 * tractionVariation,
+    aiState: "orbiting", // Start by circling the arena edge
     stateTimer: 0,
     targetId: null,
     lastImpactTime: 0,
@@ -245,11 +243,9 @@ export function updateGame(state: GameState, deltaTime: number): GameState {
             newState.sparks.push(...createSparks(collision.contactPoint, sparkCount));
           }
 
-          // Update AI states based on who was the attacker
-          const speedA = vec.length(carA.velocity);
-          const speedB = vec.length(carB.velocity);
-          onCarImpact(carA, speedA > speedB);
-          onCarImpact(carB, speedB > speedA);
+          // Update AI states after impact
+          onCarImpact(carA);
+          onCarImpact(carB);
         }
       }
     }

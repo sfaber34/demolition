@@ -34,12 +34,16 @@ export interface Car {
 }
 
 export type AIState =
-  | "seeking" // Looking for a target
-  | "circling" // Circling to get a good angle
-  | "attacking" // Final attack run
-  | "disengaging" // Post-hit retreat
-  | "evading" // Running from danger
-  | "recovering"; // After being hit
+  | "seeking" // Legacy
+  | "circling" // Legacy
+  | "attacking" // Legacy
+  | "disengaging" // Legacy
+  | "evading" // Legacy
+  | "recovering" // Legacy
+  | "charging" // Legacy
+  | "orbiting" // Circle the arena edge, build speed
+  | "striking" // Dive in for the hit!
+  | "repositioning"; // Brief reposition to edge
 
 export interface Collision {
   carA: Car;
@@ -130,10 +134,10 @@ export const CAR_CONFIG = {
   width: 50,
   height: 28,
   maxHealth: 100,
-  baseDamageMultiplier: 1.5, // Higher multiplier to compensate for slower speeds
-  minDamageSpeed: 10, // Low threshold for damage
-  wallDamageMultiplier: 0.05,
-  pinnedDamageMultiplier: 2.0,
+  baseDamageMultiplier: 2.0, // HIGH damage - big hits matter!
+  minDamageSpeed: 5, // Very low threshold - most collisions deal damage
+  wallDamageMultiplier: 0.08,
+  pinnedDamageMultiplier: 2.5,
 };
 
 export const CAR_COLORS = {

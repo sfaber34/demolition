@@ -1,322 +1,255 @@
-// Smart AI Driver System for Demolition Derby
+// AGGRESSIVE AI Driver System for Demolition Derby
+// Philosophy: Orbit the arena, build speed, dive in for BIG HITS
+// Two winners: Last car standing AND most damage dealt.
 import { getCarCorners, getCarForward, vec } from "./physics";
-import { AI_CONFIG, ARENA_CONFIG, Car, Vector2D } from "./types";
+import { ARENA_CONFIG, Car, Vector2D } from "./types";
 
-// Speed requirements for damage - adjusted for realistic car speeds
-// With maxSpeed ~120 and 0-60 in ~8 seconds, these are realistic thresholds
-const MIN_DAMAGE_SPEED = 10; // Low threshold - most moving collisions count
-const MIN_RUN_UP_DISTANCE = 150; // Need more distance to build speed with slower acceleration
+// AI States - orbit around arena, then strike
+type AIBehavior = "orbiting" | "striking" | "repositioning";
 
-// Get health percentage
-function getHealthPercent(car: Car): number {
-  return (car.health / car.maxHealth) * 100;
+// Arena center and orbit settings
+const CENTER = { x: ARENA_CONFIG.width / 2, y: ARENA_CONFIG.height / 2 };
+const ORBIT_RADIUS = Math.min(ARENA_CONFIG.width, ARENA_CONFIG.height) * 0.38; // Close to walls
+const MIN_ORBIT_TIME = 1500; // Minimum time orbiting before striking (ms)
+const MAX_ORBIT_TIME = 4000; // Maximum orbit time before forced strike
+
+// Get the nearest alive enemy
+function getNearestTarget(self: Car, cars: Car[]): Car | undefined {
+  let nearest: Car | undefined = undefined;
+  let minDist = Infinity;
+
+  for (const other of cars) {
+    if (other.id === self.id || !other.isAlive) continue;
+    const dist = vec.distance(self.position, other.position);
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = other;
+    }
+  }
+  return nearest;
 }
 
-// Check if car should be defensive based on health
-function shouldBeDefensive(car: Car): boolean {
-  const healthPct = getHealthPercent(car);
-  return healthPct < (AI_CONFIG.lowHealthThreshold || 35);
+// Get weakest alive enemy (to finish them off)
+function getWeakestTarget(self: Car, cars: Car[]): Car | undefined {
+  let weakest: Car | undefined = undefined;
+  let minHealth = Infinity;
+
+  for (const other of cars) {
+    if (other.id === self.id || !other.isAlive) continue;
+    if (other.health < minHealth) {
+      minHealth = other.health;
+      weakest = other;
+    }
+  }
+  return weakest;
 }
 
-// Find the best target to attack
-function selectTarget(self: Car, cars: Car[]): Car | null {
-  let bestTarget: Car | null = null;
+// Find a target that's more towards the center (good strike opportunity)
+function getCenterTarget(self: Car, cars: Car[]): Car | undefined {
+  let best: Car | undefined = undefined;
   let bestScore = -Infinity;
-
-  const isDefensive = shouldBeDefensive(self);
 
   for (const other of cars) {
     if (other.id === self.id || !other.isAlive) continue;
 
-    const distance = vec.distance(self.position, other.position);
-    const otherSpeed = vec.length(other.velocity);
-    const otherForward = getCarForward(other);
-    const otherHealthPct = getHealthPercent(other);
+    const otherDistFromCenter = vec.distance(other.position, CENTER);
+    const myDistFromCenter = vec.distance(self.position, CENTER);
 
-    // Calculate angle to target's side/rear
-    const toTarget = vec.normalize(vec.sub(other.position, self.position));
-    const targetAngle = Math.abs(vec.dot(otherForward, toTarget));
-
-    // Score factors - AGGRESSIVE target selection
-    // PRIORITY: Further targets = more run-up = higher speed = more damage!
-    let score = 0;
-
-    // Distance score - PREFER FURTHEST TARGETS for max speed rams!
-    // More distance = more time to accelerate = bigger hits
-    score += distance * 0.15; // Strongly prefer far targets
-
-    // Extra bonus for very far targets (cross-arena rams)
-    if (distance > 400) score += 40;
-    else if (distance > 300) score += 20;
-
-    // Vulnerability score (side/rear hits are much better)
-    score += (1 - targetAngle) * 15;
-
-    // Speed score (stationary targets easier to hit hard)
-    score += (1 - otherSpeed / 160) * 10;
-
-    // Health score - prioritize finishing off damaged cars
-    if (otherHealthPct < 30) {
-      score += 25; // High priority to finish them
-    } else if (otherHealthPct < 50) {
-      score += 10;
-    }
-
-    // When low health, just hit ANYTHING nearby
-    if (isDefensive) {
-      score += 30; // Boost all targets
-    }
-
-    // Head-on collisions are GREAT - mutual destruction is acceptable
-    if (other.targetId === self.id) {
-      score += 15; // BONUS for mutual rams!
-    }
+    // Prefer targets closer to center than us (we're on the edge)
+    // Also prefer weaker targets
+    const centerScore = myDistFromCenter - otherDistFromCenter;
+    const healthScore = (100 - other.health) * 0.5;
+    const score = centerScore + healthScore;
 
     if (score > bestScore) {
       bestScore = score;
-      bestTarget = other;
+      best = other;
     }
   }
-
-  return bestTarget;
+  return best;
 }
 
-// Calculate wall avoidance force
-function getWallAvoidance(car: Car): Vector2D {
-  const avoidance = { x: 0, y: 0 };
-  const margin = AI_CONFIG.wallAvoidDistance;
-  const innerLeft = ARENA_CONFIG.wallThickness + margin;
-  const innerRight = ARENA_CONFIG.width - ARENA_CONFIG.wallThickness - margin;
-  const innerTop = ARENA_CONFIG.wallThickness + margin;
-  const innerBottom = ARENA_CONFIG.height - ARENA_CONFIG.wallThickness - margin;
+// Check if position is near the arena edge (good for orbiting)
+function isNearEdge(pos: Vector2D): boolean {
+  const distFromCenter = vec.distance(pos, CENTER);
+  return distFromCenter > ORBIT_RADIUS * 0.7;
+}
 
-  const corners = getCarCorners(car);
+// Get the tangent direction for orbiting (clockwise or counter-clockwise)
+function getOrbitDirection(car: Car, clockwise: boolean): Vector2D {
+  const toCenter = vec.sub(CENTER, car.position);
+  const tangent = clockwise ? { x: -toCenter.y, y: toCenter.x } : { x: toCenter.y, y: -toCenter.x };
+  return vec.normalize(tangent);
+}
+
+// Check if car is heading towards a wall
+function isHeadingTowardsWall(car: Car): boolean {
   const speed = vec.length(car.velocity);
+  if (speed < 20) return false;
 
-  // Predictive avoidance: check where we'll be
-  const lookAhead = Math.min(speed * 0.5, 100);
+  const margin = 60;
+  const lookAhead = speed * 0.5;
   const futurePos = vec.add(car.position, vec.mul(vec.normalize(car.velocity), lookAhead));
 
-  // Multi-layer avoidance with exponential falloff
-  const checkPositions = [car.position, futurePos, ...corners];
+  const corners = getCarCorners(car);
+  const checkPoints = [futurePos, ...corners];
 
-  for (const pos of checkPositions) {
-    // Left wall
-    if (pos.x < innerLeft) {
-      const dist = Math.max(1, pos.x - ARENA_CONFIG.wallThickness);
-      avoidance.x += AI_CONFIG.wallAvoidStrength * (margin / dist);
-    }
-    // Right wall
-    if (pos.x > innerRight) {
-      const dist = Math.max(1, ARENA_CONFIG.width - ARENA_CONFIG.wallThickness - pos.x);
-      avoidance.x -= AI_CONFIG.wallAvoidStrength * (margin / dist);
-    }
-    // Top wall
-    if (pos.y < innerTop) {
-      const dist = Math.max(1, pos.y - ARENA_CONFIG.wallThickness);
-      avoidance.y += AI_CONFIG.wallAvoidStrength * (margin / dist);
-    }
-    // Bottom wall
-    if (pos.y > innerBottom) {
-      const dist = Math.max(1, ARENA_CONFIG.height - ARENA_CONFIG.wallThickness - pos.y);
-      avoidance.y -= AI_CONFIG.wallAvoidStrength * (margin / dist);
-    }
+  for (const pos of checkPoints) {
+    if (pos.x < ARENA_CONFIG.wallThickness + margin) return true;
+    if (pos.x > ARENA_CONFIG.width - ARENA_CONFIG.wallThickness - margin) return true;
+    if (pos.y < ARENA_CONFIG.wallThickness + margin) return true;
+    if (pos.y > ARENA_CONFIG.height - ARENA_CONFIG.wallThickness - margin) return true;
   }
+  return false;
+}
 
-  return avoidance;
+// Determine which orbit direction is better (away from walls)
+function getBestOrbitDirection(car: Car): boolean {
+  // Try both directions, pick the one that doesn't hit a wall
+  const clockwiseTangent = getOrbitDirection(car, true);
+  const counterTangent = getOrbitDirection(car, false);
+
+  const speed = vec.length(car.velocity);
+  const lookAhead = Math.max(80, speed * 0.6);
+
+  const clockwisePos = vec.add(car.position, vec.mul(clockwiseTangent, lookAhead));
+  const counterPos = vec.add(car.position, vec.mul(counterTangent, lookAhead));
+
+  // Check which position is safer
+  const clockwiseSafe = isPositionSafe(clockwisePos);
+  const counterSafe = isPositionSafe(counterPos);
+
+  if (clockwiseSafe && !counterSafe) return true;
+  if (counterSafe && !clockwiseSafe) return false;
+
+  // Both safe or both unsafe - pick based on current velocity to maintain momentum
+  const clockwiseAlign = vec.dot(vec.normalize(car.velocity), clockwiseTangent);
+  const counterAlign = vec.dot(vec.normalize(car.velocity), counterTangent);
+
+  return clockwiseAlign > counterAlign;
+}
+
+function isPositionSafe(pos: Vector2D): boolean {
+  const margin = 50;
+  return (
+    pos.x > ARENA_CONFIG.wallThickness + margin &&
+    pos.x < ARENA_CONFIG.width - ARENA_CONFIG.wallThickness - margin &&
+    pos.y > ARENA_CONFIG.wallThickness + margin &&
+    pos.y < ARENA_CONFIG.height - ARENA_CONFIG.wallThickness - margin
+  );
 }
 
 // Update AI state machine
 export function updateAI(car: Car, cars: Car[], deltaTime: number): void {
   if (!car.isAlive) return;
 
-  const now = Date.now();
   const speed = vec.length(car.velocity);
-  const forward = getCarForward(car);
-  const isLowHealth = shouldBeDefensive(car);
+  const distFromCenter = vec.distance(car.position, CENTER);
 
-  // Count alive cars
-  const aliveCars = cars.filter(c => c.isAlive);
-  const onlyTwoLeft = aliveCars.length === 2;
-
-  // FINAL SHOWDOWN - When only 2 cars remain, ALWAYS attack!
-  if (onlyTwoLeft) {
-    const opponent = aliveCars.find(c => c.id !== car.id);
-    if (opponent) {
-      car.targetId = opponent.id;
-      car.aiState = "attacking";
-    }
-  }
-
-  // MATCH START - Everyone attacks immediately!
-  // Target the FURTHEST car for maximum speed impact!
-  if (!car.targetId && car.aiState === "seeking") {
-    let furthestDist = 0;
-    let furthestId: string | null = null;
-    for (const other of cars) {
-      if (other.id === car.id || !other.isAlive) continue;
-      const dist = vec.distance(car.position, other.position);
-      if (dist > furthestDist) {
-        furthestDist = dist;
-        furthestId = other.id;
-      }
-    }
-    if (furthestId) {
-      car.targetId = furthestId;
-      car.aiState = "attacking"; // Full speed ahead!
-    }
-  }
-
-  // LOW HEALTH = KAMIKAZE MODE
-  if (isLowHealth && car.aiState !== "attacking") {
-    // Find nearest alive enemy and attack
-    let nearestDist = Infinity;
-    let nearestId: string | null = null;
-    for (const other of cars) {
-      if (other.id === car.id || !other.isAlive) continue;
-      const dist = vec.distance(car.position, other.position);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearestId = other.id;
-      }
-    }
-    if (nearestId) {
-      car.targetId = nearestId;
-      car.aiState = "attacking"; // Always attack when low health
-    }
-  }
-
-  // Track if stuck
+  // Track movement for stuck detection
   const distMoved = vec.distance(car.position, car.lastPosition);
-  if (distMoved < AI_CONFIG.stuckThreshold) {
+  if (distMoved < 1.5) {
     car.stuckTimer += deltaTime;
   } else {
     car.stuckTimer = 0;
   }
   car.lastPosition = { ...car.position };
 
-  // State machine transitions
-  switch (car.aiState) {
-    case "disengaging":
-      // Quick disengage - get back to fighting fast!
-      // Low health = even faster recovery (desperation mode)
-      const disengageTime = isLowHealth ? AI_CONFIG.disengageTime * 0.5 : AI_CONFIG.disengageTime;
-      if (now - car.lastImpactTime > disengageTime) {
-        car.aiState = "seeking";
-      }
-      break;
+  // Get current behavior
+  const behavior = car.aiState as AIBehavior;
 
-    case "recovering":
-      // Always go back to seeking after recovery - stay aggressive!
-      if (now - car.lastImpactTime > AI_CONFIG.recoveryTime) {
-        car.aiState = "seeking";
-      }
-      break;
+  // Find a target
+  let target = cars.find(c => c.id === car.targetId && c.isAlive);
+  if (!target) {
+    target = getCenterTarget(car, cars) ?? getNearestTarget(car, cars);
+    car.targetId = target?.id ?? null;
+  }
 
-    case "seeking":
-      // Select a target and attack immediately
-      const target = selectTarget(car, cars);
-      if (target) {
-        car.targetId = target.id;
-        car.aiState = "attacking"; // Attack right away, don't circle
+  // Finish off weak targets immediately
+  const weakest = getWeakestTarget(car, cars);
+  if (weakest && weakest.health < 20 && vec.distance(car.position, weakest.position) < 300) {
+    car.targetId = weakest.id;
+    car.aiState = "striking";
+    return;
+  }
+
+  // STUCK - reposition
+  if (car.stuckTimer > 800 && speed < 15) {
+    car.aiState = "repositioning";
+    car.stateTimer = 0;
+    car.stuckTimer = 0;
+    return;
+  }
+
+  // State machine
+  switch (behavior) {
+    case "orbiting": {
+      car.stateTimer += deltaTime;
+
+      // Check if we should strike
+      const hasMinOrbitTime = car.stateTimer > MIN_ORBIT_TIME;
+      const forcedStrike = car.stateTimer > MAX_ORBIT_TIME;
+      const hasGoodSpeed = speed > 60;
+      const targetInCenter = target && vec.distance(target.position, CENTER) < ORBIT_RADIUS * 0.8;
+
+      // Strike conditions: orbited enough + good speed + target available
+      if ((hasMinOrbitTime && hasGoodSpeed && targetInCenter) || forcedStrike) {
+        car.aiState = "striking";
+        car.stateTimer = 0;
+        // Pick best target for the strike
+        target = getCenterTarget(car, cars) ?? getNearestTarget(car, cars);
+        car.targetId = target?.id ?? null;
+      }
+
+      // If we're too close to center, go back to edge
+      if (distFromCenter < ORBIT_RADIUS * 0.5) {
+        car.aiState = "repositioning";
         car.stateTimer = 0;
       }
       break;
+    }
 
-    case "circling":
-      // Smart positioning to maximize attack speed
-      const circleTarget = cars.find(c => c.id === car.targetId);
-      if (!circleTarget || !circleTarget.isAlive) {
-        car.aiState = "seeking";
+    case "striking": {
+      car.stateTimer += deltaTime;
+
+      // Check if strike is complete (passed through or target dead)
+      if (!target || !target.isAlive) {
+        car.aiState = "orbiting";
+        car.stateTimer = 0;
         car.targetId = null;
         break;
       }
 
-      const toTargetCircle = vec.sub(circleTarget.position, car.position);
-      const distToCircleTarget = vec.length(toTargetCircle);
-      const toTargetNormCircle = vec.normalize(toTargetCircle);
-      const alignment = vec.dot(forward, toTargetNormCircle);
-      const hasKillingSpeedCircle = speed >= MIN_DAMAGE_SPEED;
-      const hasGoodDistance = distToCircleTarget >= MIN_RUN_UP_DISTANCE;
+      const distToTarget = vec.distance(car.position, target.position);
 
-      car.stateTimer += deltaTime;
-
-      // Attack when we have good conditions:
-      // 1. Good distance + facing target (will build speed during charge), OR
-      // 2. Already have killing speed + facing target, OR
-      // 3. Been trying too long
-      const readyToAttack =
-        (hasGoodDistance && alignment > 0.6) || (hasKillingSpeedCircle && alignment > 0.5) || car.stateTimer > 2500;
-
-      if (readyToAttack) {
-        car.aiState = "attacking";
-        car.stateTimer = 0;
-      }
-      break;
-
-    case "attacking":
-      // Check if target is still valid
-      const attackTarget = cars.find(c => c.id === car.targetId);
-      if (!attackTarget || !attackTarget.isAlive) {
-        // Find new target immediately
-        car.aiState = "seeking";
-        car.targetId = null;
-        break;
-      }
-
-      const distToAttackTarget = vec.distance(car.position, attackTarget.position);
-      const hasKillingSpeedAttack = speed >= MIN_DAMAGE_SPEED;
-
-      // If we passed the target, turn around and attack again
-      if (distToAttackTarget > AI_CONFIG.attackDistance * 1.5 && car.stateTimer > 500) {
-        car.aiState = "seeking"; // Find new target or same target from new angle
+      // If we've passed the target or been striking too long, go back to orbiting
+      if (car.stateTimer > 2000 || (car.stateTimer > 500 && distToTarget > 350)) {
+        car.aiState = "orbiting";
         car.stateTimer = 0;
       }
 
-      // If close to target without killing speed, back up to build run-up
-      if (distToAttackTarget < 150 && !hasKillingSpeedAttack && car.stateTimer > 400) {
-        car.aiState = "disengaging"; // Back up to get speed!
-        car.lastImpactTime = now;
-      }
-
-      car.stateTimer += deltaTime;
-      break;
-
-    case "evading":
-      // Quickly get back to attacking - evading is only temporary
-      car.stateTimer += deltaTime;
-      if (car.stateTimer > 500) {
-        // Only evade for 500ms max
-        car.aiState = "seeking";
+      // If we're now near the edge after striking, start orbiting
+      if (isNearEdge(car.position) && car.stateTimer > 800) {
+        car.aiState = "orbiting";
         car.stateTimer = 0;
       }
       break;
-  }
-
-  // If stuck, find a new approach (but low health cars just keep attacking)
-  if (car.stuckTimer > AI_CONFIG.stuckTime && !isLowHealth) {
-    car.aiState = "seeking";
-    car.targetId = null;
-    car.stuckTimer = 0;
-  }
-
-  // Low health and stuck? Just pick nearest target and charge
-  if (car.stuckTimer > AI_CONFIG.stuckTime && isLowHealth) {
-    let nearestDist = Infinity;
-    let nearestId: string | null = null;
-    for (const other of cars) {
-      if (other.id === car.id || !other.isAlive) continue;
-      const dist = vec.distance(car.position, other.position);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearestId = other.id;
-      }
     }
-    if (nearestId) {
-      car.targetId = nearestId;
-      car.aiState = "attacking";
+
+    case "repositioning": {
+      car.stateTimer += deltaTime;
+
+      // Brief reposition - head towards nearest edge
+      if (car.stateTimer > 600 || isNearEdge(car.position)) {
+        car.aiState = "orbiting";
+        car.stateTimer = 0;
+      }
+      break;
     }
-    car.stuckTimer = 0;
+
+    default:
+      car.aiState = "orbiting";
+      car.stateTimer = 0;
   }
 }
 
@@ -324,116 +257,76 @@ export function updateAI(car: Car, cars: Car[], deltaTime: number): void {
 export function getAIControls(car: Car, cars: Car[]): { throttle: number; steer: number } {
   if (!car.isAlive) return { throttle: 0, steer: 0 };
 
-  let throttle = 0;
-  let steer = 0;
-
   const forward = getCarForward(car);
   const speed = vec.length(car.velocity);
-  const wallAvoidance = getWallAvoidance(car);
+  const behavior = car.aiState as AIBehavior;
 
-  // Get target direction based on state
-  let targetDir: Vector2D = forward;
-  let accelerate = true;
+  let targetDir: Vector2D;
+  let throttle = 1.0;
 
-  switch (car.aiState) {
-    case "seeking": {
-      // Move towards center while looking for target
-      const toCenter = vec.normalize(vec.sub({ x: ARENA_CONFIG.width / 2, y: ARENA_CONFIG.height / 2 }, car.position));
-      targetDir = toCenter;
-      accelerate = true;
-      break;
-    }
+  switch (behavior) {
+    case "orbiting": {
+      // Orbit around the arena edge, building speed
+      const clockwise = getBestOrbitDirection(car);
+      const orbitDir = getOrbitDirection(car, clockwise);
 
-    case "circling": {
-      // No more circling - just CHARGE!
-      const target = cars.find(c => c.id === car.targetId);
-      if (target) {
-        const toTarget = vec.sub(target.position, car.position);
-        const toTargetNorm = vec.normalize(toTarget);
+      // Blend orbit direction with slight outward push to stay near edge
+      const toEdge = vec.normalize(vec.sub(car.position, CENTER));
+      const distFromCenter = vec.distance(car.position, CENTER);
 
-        // Always charge directly at target!
-        targetDir = toTargetNorm;
-        throttle = 1.5;
-        accelerate = true;
+      // If too close to center, push outward more
+      const edgeWeight = distFromCenter < ORBIT_RADIUS ? 0.4 : 0.1;
+      targetDir = vec.normalize(vec.add(vec.mul(orbitDir, 1 - edgeWeight), vec.mul(toEdge, edgeWeight)));
+
+      // Wall avoidance while orbiting
+      if (isHeadingTowardsWall(car)) {
+        // Steer more towards center temporarily
+        const toCenter = vec.normalize(vec.sub(CENTER, car.position));
+        targetDir = vec.normalize(vec.add(vec.mul(targetDir, 0.4), vec.mul(toCenter, 0.6)));
       }
+
+      throttle = 1.2; // Build speed while orbiting
       break;
     }
 
-    case "attacking": {
-      const target = cars.find(c => c.id === car.targetId);
+    case "striking": {
+      // FULL SPEED at target!
+      const target = cars.find(c => c.id === car.targetId && c.isAlive);
+
       if (target) {
-        const toTarget = vec.sub(target.position, car.position);
-        const distToTarget = vec.length(toTarget);
-        const toTargetNorm = vec.normalize(toTarget);
-
-        // Check if stuck (close to target but slow)
-        const isStuck = distToTarget < 100 && speed < 25;
-
-        if (isStuck) {
-          // Stuck! Reverse briefly
-          targetDir = vec.mul(toTargetNorm, -1);
-          throttle = -1.0;
-          accelerate = false;
-        } else {
-          // ALWAYS ATTACK! Lead the target for better hits
-          const leadTime = Math.min(0.4, distToTarget / 300);
-          const predictedPos = vec.add(target.position, vec.mul(target.velocity, leadTime));
-          targetDir = vec.normalize(vec.sub(predictedPos, car.position));
-          accelerate = true;
-          throttle = 1.5; // FULL THROTTLE ALWAYS!
-        }
+        // Lead the target for better hits
+        const distToTarget = vec.distance(car.position, target.position);
+        const leadTime = Math.min(0.4, distToTarget / 300);
+        const predictedPos = vec.add(target.position, vec.mul(target.velocity, leadTime));
+        targetDir = vec.normalize(vec.sub(predictedPos, car.position));
+        throttle = 1.5; // Maximum acceleration during strike!
       } else {
-        targetDir = forward;
-        accelerate = true;
+        // No target, curve towards center to find one
+        targetDir = vec.normalize(vec.sub(CENTER, car.position));
         throttle = 1.0;
       }
       break;
     }
 
-    case "disengaging": {
-      // Actively reverse away to get ramming distance
-      const target = cars.find(c => c.id === car.targetId);
-      if (target) {
-        const awayFromTarget = vec.normalize(vec.sub(car.position, target.position));
-        targetDir = awayFromTarget;
+    case "repositioning": {
+      // Head towards the nearest edge point
+      const toEdge = vec.normalize(vec.sub(car.position, CENTER));
+      const edgePoint = vec.add(CENTER, vec.mul(toEdge, ORBIT_RADIUS));
+      targetDir = vec.normalize(vec.sub(edgePoint, car.position));
 
-        // Always reverse when disengaging
-        throttle = -1.0;
-        accelerate = false;
-      } else {
-        // No target, just reverse
-        targetDir = vec.mul(forward, -1);
-        throttle = -1.0;
-        accelerate = false;
+      // If close to wall, orbit instead
+      if (isHeadingTowardsWall(car)) {
+        const clockwise = getBestOrbitDirection(car);
+        targetDir = getOrbitDirection(car, clockwise);
       }
-      break;
-    }
 
-    case "recovering": {
-      // Just try to move away and regain control
-      targetDir = forward;
-      accelerate = speed < 80;
-      break;
-    }
-
-    case "evading": {
-      // Brief evasion - just move towards center to reposition
-      const toCenter = vec.normalize(vec.sub({ x: ARENA_CONFIG.width / 2, y: ARENA_CONFIG.height / 2 }, car.position));
-      targetDir = toCenter;
-      accelerate = true;
       throttle = 1.0;
       break;
     }
-  }
 
-  // Apply wall avoidance - but NOT when attacking (we want to ram, not avoid!)
-  const wallForce = vec.length(wallAvoidance);
-  const isAttacking = car.aiState === "attacking";
-  if (wallForce > 0.5 && !isAttacking) {
-    const avoidWeight = Math.min(wallForce / 4, 0.5); // Reduced wall avoidance
-    targetDir = vec.normalize(
-      vec.add(vec.mul(targetDir, 1 - avoidWeight), vec.mul(vec.normalize(wallAvoidance), avoidWeight)),
-    );
+    default:
+      targetDir = forward;
+      throttle = 1.0;
   }
 
   // Calculate steering
@@ -444,22 +337,19 @@ export function getAIControls(car: Car, cars: Car[]): { throttle: number; steer:
   while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
   while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-  // Check if we should reverse (target is behind us)
-  if (Math.abs(angleDiff) > Math.PI * 0.7 && speed < 60) {
-    // Reverse is faster
-    throttle = -0.7;
+  // If target is directly behind and we're slow, reverse briefly
+  if (Math.abs(angleDiff) > Math.PI * 0.7 && speed < 40) {
+    throttle = -0.6;
     angleDiff = angleDiff > 0 ? angleDiff - Math.PI : angleDiff + Math.PI;
-  } else if (accelerate && throttle >= 0) {
-    throttle = Math.max(throttle, 0.9);
   }
 
-  // Steering intensity based on angle difference
-  steer = Math.max(-1, Math.min(1, angleDiff * 2));
+  // Steering intensity
+  let steer = Math.max(-1, Math.min(1, angleDiff * 2.5));
 
-  // Reduce steering at high speed to prevent spin-out (based on traction)
-  if (speed > 120) {
-    const steerReduction = Math.min(1, (speed - 120) / 100) * (1 - car.traction * 0.3);
-    steer *= 1 - steerReduction * 0.5;
+  // Reduce steering at very high speed to prevent spin-outs
+  if (speed > 100) {
+    const reduction = Math.min(0.3, (speed - 100) / 150);
+    steer *= 1 - reduction;
   }
 
   return { throttle, steer };
@@ -477,32 +367,24 @@ export function applyAIControls(car: Car, controls: { throttle: number; steer: n
   const accelForce = controls.throttle * car.acceleration * car.traction;
 
   if (controls.throttle > 0) {
-    // Forward acceleration
-    car.velocity = vec.add(car.velocity, vec.mul(forward, accelForce * dt));
+    car.velocity = vec.add(car.velocity, vec.mul(forward, accelForce * dt * 1.2));
   } else if (controls.throttle < 0) {
-    // Reverse/brake
     car.velocity = vec.add(car.velocity, vec.mul(forward, accelForce * dt));
   }
 
-  // Apply steering (more effective at speed, but affected by traction)
-  const steerEffectiveness = Math.min(1, speed / 40) * car.cornering;
-  car.angularVelocity += controls.steer * 0.12 * steerEffectiveness * dt;
+  // Apply steering
+  const steerEffectiveness = Math.min(1.2, speed / 30) * car.cornering;
+  car.angularVelocity += controls.steer * 0.14 * steerEffectiveness * dt;
 
   // Clamp angular velocity
-  const maxAngularVel = 0.15 / car.traction;
+  const maxAngularVel = 0.18 / car.traction;
   car.angularVelocity = Math.max(-maxAngularVel, Math.min(maxAngularVel, car.angularVelocity));
 }
 
-// Handle impact event (call this after collision)
-export function onCarImpact(car: Car, wasAttacker: boolean): void {
-  const now = Date.now();
-  car.lastImpactTime = now;
-
-  if (wasAttacker) {
-    // Successful hit, disengage
-    car.aiState = "disengaging";
-  } else {
-    // We got hit, recover
-    car.aiState = "recovering";
-  }
+// Handle impact event
+export function onCarImpact(car: Car): void {
+  car.lastImpactTime = Date.now();
+  // After a hit, go back to orbiting to build speed for next strike
+  car.aiState = "orbiting";
+  car.stateTimer = 0;
 }

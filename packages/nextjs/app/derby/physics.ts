@@ -285,9 +285,9 @@ export function resolveCarCollision(collision: Collision): { damageA: number; da
   damageA *= 1 + (1 - hitAngleA) * 0.8;
   damageB *= 1 + (1 - hitAngleB) * 0.8;
 
-  // Cap maximum damage per hit to prevent instant kills but allow big hits
-  damageA = Math.min(damageA, 25);
-  damageB = Math.min(damageB, 25);
+  // Cap maximum damage per hit - allow BIG HITS but no instant kills
+  damageA = Math.min(damageA, 35);
+  damageB = Math.min(damageB, 35);
 
   return { damageA, damageB };
 }
