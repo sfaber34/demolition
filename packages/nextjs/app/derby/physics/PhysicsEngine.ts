@@ -208,7 +208,11 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
 
     // Calculate impact speed for physics and damage
     const relVel = vec.sub(carA.velocity, carB.velocity);
-    const relativeImpact = Math.abs(vec.dot(relVel, collisionNormal));
+    const velAlongNormal = vec.dot(relVel, collisionNormal);
+    // velAlongNormal < 0 means cars are CLOSING (approaching each other)
+    // velAlongNormal > 0 means cars are SEPARATING (moving apart)
+    // Only count CLOSING velocity for damage - separating cars shouldn't take impact damage
+    const relativeImpact = velAlongNormal < 0 ? -velAlongNormal : 0;
     const speedA = vec.length(carA.velocity);
     const speedB = vec.length(carB.velocity);
     const combinedSpeed = (speedA + speedB) * 0.5;
@@ -217,27 +221,13 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     const impactSpeed = Math.max(relativeImpact, combinedSpeed);
 
     // For DAMAGE calculation:
-    // - relativeImpact: good for head-on (cars approaching each other)
-    // - For side/chase hits, we need to consider if cars are actually MOVING FAST
-    // Key insight: if BOTH cars are slow (<5), it's a push match - no damage
-    // Realistic speeds: cars typically move at 5-12, max observed ~15
-    const minSpeed = Math.min(speedA, speedB);
-    const maxSpeed = Math.max(speedA, speedB);
-
-    // Damage impact: use relative impact, but boost it if one car is fast
-    // This prevents slow pushing from causing damage while allowing fast hits
-    let damageImpactSpeed = relativeImpact;
-
-    // If the faster car is moving at a good clip, ensure fast hits register
-    if (maxSpeed > 10) {
-      // Blend: mostly relative impact, but ensure fast hits register
-      damageImpactSpeed = Math.max(relativeImpact, maxSpeed * 0.6);
-    }
-
-    // But if BOTH cars are very slow, cap the damage impact to prevent grinding
-    if (minSpeed < 4 && maxSpeed < 6) {
-      damageImpactSpeed = 0; // True grinding - no damage
-    }
+    // Use relativeImpact directly - this is the CLOSING VELOCITY (how fast cars are approaching)
+    // This correctly handles:
+    // - Two slow cars (speed 4 each) moving toward each other = relativeImpact 8 (damage!)
+    // - Two cars stuck grinding (not closing) = relativeImpact near 0 (no damage)
+    // The collision cooldown (400ms) prevents repeated damage while stuck
+    // The MIN_DAMAGE_SPEED threshold filters very light bumps
+    const damageImpactSpeed = relativeImpact;
 
     const contactPoint = vec.lerp(carA.position, carB.position, 0.5);
 
@@ -329,9 +319,9 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     carB.angularVelocity *= 0.85;
 
     // Calculate damage using damageImpactSpeed
-    // Based on log analysis: max car speed is ~12, max relative impact is ~17
-    // Threshold should be low enough to allow damage but filter slow pushing
-    const MIN_DAMAGE_SPEED = 10;
+    // Based on log analysis: max car speed is ~10, typical collisions have damageImpactSpeed 8-15
+    // Most collisions were at 8-10, so lowering threshold to allow more damage
+    const MIN_DAMAGE_SPEED = 6;
 
     // Cleanup old cooldowns periodically
     const nowMs = Date.now();
@@ -402,13 +392,13 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     }
 
     // Damage scales with relative impact speed (not combined speed)
-    // Realistic max impact speed is ~25-30 (two cars at ~12-15 speed head-on)
-    // Scale formula to realistic max, not theoretical max
-    const REALISTIC_MAX_IMPACT = 25;
+    // Based on log analysis: typical damageImpactSpeed is 8-15, max observed ~15
+    // Scale formula to realistic max observed
+    const REALISTIC_MAX_IMPACT = 16;
     const speedFactor = Math.min(1, damageImpactSpeed / REALISTIC_MAX_IMPACT);
-    // At max impact (25): baseDamage = 25 * 2.0 * 1.0 = 50 total, split = 25 each (strong hit)
-    // At typical impact (15): baseDamage = 15 * 2.0 * 0.6 = 18 total, split = 9 each (medium hit)
-    // At threshold (10): baseDamage = 10 * 2.0 * 0.4 = 8 total, split = 4 each (light hit)
+    // At max impact (15): baseDamage = 15 * 2.0 * 0.94 = 28 total, split = 14 each (strong hit)
+    // At typical impact (10): baseDamage = 10 * 2.0 * 0.625 = 12.5 total, split = 6 each (medium hit)
+    // At threshold (6): baseDamage = 6 * 2.0 * 0.375 = 4.5 total, split = 2.25 each (light hit)
     const baseDamage = damageImpactSpeed * CAR_CONFIG.baseDamageMultiplier * speedFactor;
 
     let damageA: number;
