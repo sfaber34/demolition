@@ -234,14 +234,40 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       }
     }
 
-    // Angular impulse
+    // Angular impulse - only apply significant spin for off-center/side impacts
+    // For head-on collisions, the impact should NOT cause spinning
+    const forwardA = this.getCarForward(carA);
+    const forwardB = this.getCarForward(carB);
+
+    // How much is this a side hit? (0 = head-on, 1 = pure side)
+    // Use dot product of forward direction with collision normal
+    const sideFactorA = 1 - Math.abs(vec.dot(forwardA, normal));
+    const sideFactorB = 1 - Math.abs(vec.dot(forwardB, normal));
+
+    // Contact offset from center (cross product gives torque arm)
     const contactToA = vec.sub(collision.contactPoint, carA.position);
     const contactToB = vec.sub(collision.contactPoint, carB.position);
-    const angularImpulseA = (contactToA.x * normal.y - contactToA.y * normal.x) * impactSpeed * 0.004;
-    const angularImpulseB = (contactToB.x * normal.y - contactToB.y * normal.x) * impactSpeed * 0.004;
+    const torqueArmA = contactToA.x * normal.y - contactToA.y * normal.x;
+    const torqueArmB = contactToB.x * normal.y - contactToB.y * normal.x;
 
-    carA.angularVelocity += angularImpulseA / carA.traction;
-    carB.angularVelocity -= angularImpulseB / carB.traction;
+    // Much lower base multiplier, scaled by side factor
+    // Head-on (sideFactor ~= 0) → almost no spin
+    // Side hit (sideFactor ~= 1) → some spin
+    const angularMultiplier = 0.0015;
+    const angularImpulseA = torqueArmA * impactSpeed * angularMultiplier * sideFactorA;
+    const angularImpulseB = torqueArmB * impactSpeed * angularMultiplier * sideFactorB;
+
+    // Apply with reduced traction effect and cap max change
+    const maxAngularChange = 0.08; // Cap the spin per collision
+    const clampedImpulseA = Math.max(-maxAngularChange, Math.min(maxAngularChange, angularImpulseA));
+    const clampedImpulseB = Math.max(-maxAngularChange, Math.min(maxAngularChange, angularImpulseB));
+
+    carA.angularVelocity += clampedImpulseA;
+    carB.angularVelocity -= clampedImpulseB;
+
+    // Apply extra angular damping after collision to prevent runaway spinning
+    carA.angularVelocity *= 0.85;
+    carB.angularVelocity *= 0.85;
 
     // Calculate damage
     const MIN_DAMAGE_SPEED = 5;
@@ -266,9 +292,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       damageB = baseDamage * 0.6;
     }
 
-    // Side/rear hits deal more damage
-    const forwardA = this.getCarForward(carA);
-    const forwardB = this.getCarForward(carB);
+    // Side/rear hits deal more damage (reuse forwardA/forwardB from above)
     const hitAngleA = Math.abs(vec.dot(forwardA, normal));
     const hitAngleB = Math.abs(vec.dot(forwardB, normal));
 
@@ -358,9 +382,14 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       car.velocity = vec.sub(car.velocity, vec.mul(normal, velAlongNormal * (1 + restitution)));
     }
 
-    // Add angular velocity on wall hit
+    // Add angular velocity on wall hit - only for glancing blows
+    const forward = this.getCarForward(car);
+    const sideFactor = 1 - Math.abs(vec.dot(forward, normal)); // 0 = head-on, 1 = side
     const perpComponent = car.velocity.x * normal.y - car.velocity.y * normal.x;
-    car.angularVelocity += (perpComponent * 0.003) / car.traction;
+    const angularChange = perpComponent * 0.001 * sideFactor;
+    const clampedChange = Math.max(-0.05, Math.min(0.05, angularChange));
+    car.angularVelocity += clampedChange;
+    car.angularVelocity *= 0.9; // Damping on wall hit
 
     // Calculate wall damage
     let damage = 0;
