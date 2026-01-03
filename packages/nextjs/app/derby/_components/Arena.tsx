@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ARENA_CONFIG } from "../types";
+import { ARENA_CONFIG } from "../sim/typesSim";
 
 export const Arena: React.FC = () => {
   const { width, height, wallThickness } = ARENA_CONFIG;
