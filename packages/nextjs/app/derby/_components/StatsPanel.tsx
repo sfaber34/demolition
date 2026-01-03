@@ -1,10 +1,10 @@
 "use client";
 
 import React from "react";
-import { Car as CarType } from "../types";
+import { CarSim } from "../sim/typesSim";
 
 interface StatsPanelProps {
-  cars: CarType[];
+  cars: CarSim[];
 }
 
 export const StatsPanel: React.FC<StatsPanelProps> = ({ cars }) => {
@@ -21,7 +21,7 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ cars }) => {
 };
 
 interface CarStatsProps {
-  car: CarType;
+  car: CarSim;
 }
 
 const CarStats: React.FC<CarStatsProps> = ({ car }) => {

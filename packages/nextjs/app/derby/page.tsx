@@ -14,39 +14,48 @@ import {
   StatsPanel,
   TireMarks,
 } from "./_components";
-import { createInitialGameState, restartGame, updateGame } from "./gameEngine";
-import { ARENA_CONFIG, GameState } from "./types";
+import { GameEngine, GameSnapshot } from "./engine/GameEngine";
+import { ARENA_CONFIG } from "./sim/typesSim";
 
 export default function DerbyPage() {
-  // Auto-start the game immediately
-  const [gameState, setGameState] = useState<GameState>(() => {
-    const state = createInitialGameState();
-    state.gamePhase = "playing"; // Start playing immediately
-    return state;
+  // Create engine once and store in ref
+  const engineRef = useRef<GameEngine | null>(null);
+
+  // Get initial snapshot for state
+  const [gameSnapshot, setGameSnapshot] = useState<GameSnapshot>(() => {
+    const engine = new GameEngine(16);
+    engine.start(); // Start playing immediately
+    engineRef.current = engine;
+    return engine.getSnapshot();
   });
+
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
 
   const gameLoop = useCallback((timestamp: number) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+
     if (lastTimeRef.current === 0) {
       lastTimeRef.current = timestamp;
     }
 
-    const deltaTime = Math.min(timestamp - lastTimeRef.current, 50); // Cap delta to prevent huge jumps
+    const deltaTime = Math.min(timestamp - lastTimeRef.current, 50); // Cap delta
     lastTimeRef.current = timestamp;
 
-    setGameState(prevState => {
-      if (prevState.gamePhase !== "playing") {
-        return prevState;
-      }
-      return updateGame(prevState, deltaTime);
-    });
+    if (engine.getPhase() === "playing") {
+      engine.step(deltaTime);
+      setGameSnapshot(engine.getSnapshot());
+    }
 
     animationRef.current = requestAnimationFrame(gameLoop);
   }, []);
 
   useEffect(() => {
-    if (gameState.gamePhase === "playing") {
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    if (engine.getPhase() === "playing") {
       lastTimeRef.current = 0;
       animationRef.current = requestAnimationFrame(gameLoop);
     }
@@ -56,10 +65,19 @@ export default function DerbyPage() {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [gameState.gamePhase, gameLoop]);
+  }, [gameLoop]);
 
   const handleRestart = () => {
-    setGameState(restartGame());
+    const engine = engineRef.current;
+    if (engine) {
+      engine.restart();
+      setGameSnapshot(engine.getSnapshot());
+      lastTimeRef.current = 0;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+      animationRef.current = requestAnimationFrame(gameLoop);
+    }
   };
 
   // Responsive scaling
@@ -94,16 +112,16 @@ export default function DerbyPage() {
 
       {/* Main content */}
       <main className="w-full max-w-4xl flex flex-col items-center">
-        {gameState.gamePhase === "gameover" && (
+        {gameSnapshot.gamePhase === "gameover" && (
           <GameOverScreen
-            winner={gameState.winner}
-            cars={gameState.cars}
-            gameTime={gameState.gameTime}
+            winner={gameSnapshot.winner}
+            cars={gameSnapshot.cars}
+            gameTime={gameSnapshot.gameTime}
             onRestart={handleRestart}
           />
         )}
 
-        {gameState.gamePhase === "playing" && (
+        {gameSnapshot.gamePhase === "playing" && (
           <>
             {/* HUD */}
             <div
@@ -112,7 +130,7 @@ export default function DerbyPage() {
                 maxWidth: ARENA_CONFIG.width * scale,
               }}
             >
-              <HUD cars={gameState.cars} />
+              <HUD cars={gameSnapshot.cars} />
             </div>
 
             {/* Arena */}
@@ -133,33 +151,33 @@ export default function DerbyPage() {
                 <Arena />
 
                 {/* Tire marks (rendered first, below everything) */}
-                <TireMarks marks={gameState.tireMarks} />
+                <TireMarks marks={gameSnapshot.effects.tireMarks} />
 
                 {/* Dust clouds */}
-                {gameState.cars.map(car => (
+                {gameSnapshot.cars.map(car => (
                   <DustCloud key={`dust-${car.id}`} car={car} />
                 ))}
 
                 {/* Cars */}
-                {gameState.cars.map(car => (
+                {gameSnapshot.cars.map(car => (
                   <Car key={car.id} car={car} />
                 ))}
 
                 {/* Car effects (smoke, fire) */}
-                {gameState.cars.map(car => (
+                {gameSnapshot.cars.map(car => (
                   <CarEffects key={`effects-${car.id}`} car={car} />
                 ))}
 
                 {/* Sparks */}
-                <Sparks sparks={gameState.sparks} />
+                <Sparks sparks={gameSnapshot.effects.sparks} />
 
                 {/* Explosions */}
-                {gameState.explosions.map(explosion => (
+                {gameSnapshot.effects.explosions.map(explosion => (
                   <ExplosionEffect key={explosion.id} explosion={explosion} />
                 ))}
 
                 {/* Floating damage numbers */}
-                <DamageNumbers damageNumbers={gameState.damageNumbers} />
+                <DamageNumbers damageNumbers={gameSnapshot.effects.damageNumbers} />
               </svg>
             </div>
 
@@ -170,7 +188,7 @@ export default function DerbyPage() {
                 maxWidth: ARENA_CONFIG.width * scale,
               }}
             >
-              <StatsPanel cars={gameState.cars} />
+              <StatsPanel cars={gameSnapshot.cars} />
             </div>
           </>
         )}

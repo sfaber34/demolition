@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { Car as CarType } from "../types";
+import { CarSim } from "../sim/typesSim";
 
 interface CarProps {
-  car: CarType;
+  car: CarSim;
 }
 
 export const Car: React.FC<CarProps> = ({ car }) => {
@@ -18,13 +18,15 @@ export const Car: React.FC<CarProps> = ({ car }) => {
     const damageLevel = 1 - healthPercent;
 
     if (damageLevel > 0.25) {
-      // Minor scratches and dents
+      // Minor scratches and dents - use deterministic positions based on car id
       const scratchCount = Math.floor(damageLevel * 8);
+      const seed = car.id.charCodeAt(car.id.length - 1) / 255;
       for (let i = 0; i < scratchCount; i++) {
-        const x = (Math.random() - 0.5) * width * 0.8;
-        const y = (Math.random() - 0.5) * height * 0.8;
-        const angle = Math.random() * 180;
-        const length = 3 + Math.random() * 8;
+        const seedOffset = (seed + i * 0.137) % 1;
+        const x = (seedOffset - 0.5) * width * 0.8;
+        const y = (((seedOffset * 7) % 1) - 0.5) * height * 0.8;
+        const angle = ((seedOffset * 17) % 1) * 180;
+        const length = 3 + ((seedOffset * 11) % 1) * 8;
         elements.push(
           <line
             key={`scratch-${i}`}
@@ -43,10 +45,12 @@ export const Car: React.FC<CarProps> = ({ car }) => {
     if (damageLevel > 0.5) {
       // Visible dents (darker areas)
       const dentCount = Math.floor((damageLevel - 0.5) * 6);
+      const seed = car.id.charCodeAt(car.id.length - 2) / 255;
       for (let i = 0; i < dentCount; i++) {
-        const x = (Math.random() - 0.5) * width * 0.7;
-        const y = (Math.random() - 0.5) * height * 0.7;
-        const size = 4 + Math.random() * 6;
+        const seedOffset = (seed + i * 0.193) % 1;
+        const x = (seedOffset - 0.5) * width * 0.7;
+        const y = (((seedOffset * 13) % 1) - 0.5) * height * 0.7;
+        const size = 4 + seedOffset * 6;
         elements.push(
           <ellipse
             key={`dent-${i}`}
@@ -55,7 +59,7 @@ export const Car: React.FC<CarProps> = ({ car }) => {
             rx={size}
             ry={size * 0.6}
             fill="rgba(0,0,0,0.25)"
-            transform={`rotate(${Math.random() * 360}, ${x}, ${y})`}
+            transform={`rotate(${seedOffset * 360}, ${x}, ${y})`}
           />,
         );
       }
@@ -64,16 +68,19 @@ export const Car: React.FC<CarProps> = ({ car }) => {
     if (damageLevel > 0.75) {
       // Cracks
       const crackCount = Math.floor((damageLevel - 0.75) * 8);
+      const seed = car.id.charCodeAt(0) / 255;
       for (let i = 0; i < crackCount; i++) {
-        const startX = (Math.random() - 0.5) * width * 0.6;
-        const startY = (Math.random() - 0.5) * height * 0.6;
-        const segments = 2 + Math.floor(Math.random() * 3);
+        const seedOffset = (seed + i * 0.271) % 1;
+        const startX = (seedOffset - 0.5) * width * 0.6;
+        const startY = (((seedOffset * 7) % 1) - 0.5) * height * 0.6;
+        const segments = 2 + Math.floor((seedOffset * 3) % 3);
         let pathD = `M ${startX} ${startY}`;
         let x = startX;
         let y = startY;
         for (let j = 0; j < segments; j++) {
-          x += (Math.random() - 0.5) * 12;
-          y += (Math.random() - 0.5) * 12;
+          const segSeed = (seedOffset + j * 0.31) % 1;
+          x += (segSeed - 0.5) * 12;
+          y += (((segSeed * 3) % 1) - 0.5) * 12;
           pathD += ` L ${x} ${y}`;
         }
         elements.push(<path key={`crack-${i}`} d={pathD} stroke="rgba(0,0,0,0.5)" strokeWidth={1.5} fill="none" />);
@@ -81,7 +88,7 @@ export const Car: React.FC<CarProps> = ({ car }) => {
     }
 
     return elements;
-  }, [healthPercent, width, height]);
+  }, [healthPercent, width, height, car.id]);
 
   // Darken color based on damage
   const darkenAmount = Math.min(0.4, (1 - healthPercent) * 0.5);
@@ -104,7 +111,8 @@ export const Car: React.FC<CarProps> = ({ car }) => {
   }, [color]);
 
   if (!isAlive) {
-    // Dead car - maximum damage appearance
+    // Dead car - maximum damage appearance (deterministic)
+    const seed = car.id.charCodeAt(0) / 255;
     return (
       <g
         transform={`translate(${position.x}, ${position.y}) rotate(${(rotation * 180) / Math.PI})`}
@@ -123,17 +131,18 @@ export const Car: React.FC<CarProps> = ({ car }) => {
         />
         {/* Heavy damage overlay */}
         <rect x={-width / 2} y={-height / 2} width={width} height={height} fill="rgba(0,0,0,0.4)" rx={3} />
-        {/* Cracks everywhere */}
+        {/* Cracks everywhere - deterministic */}
         {Array.from({ length: 12 }).map((_, i) => {
-          const startX = (Math.random() - 0.5) * width;
-          const startY = (Math.random() - 0.5) * height;
+          const seedOffset = (seed + i * 0.083) % 1;
+          const startX = (seedOffset - 0.5) * width;
+          const startY = (((seedOffset * 7) % 1) - 0.5) * height;
           return (
             <line
               key={`dead-crack-${i}`}
               x1={startX}
               y1={startY}
-              x2={startX + (Math.random() - 0.5) * 20}
-              y2={startY + (Math.random() - 0.5) * 20}
+              x2={startX + (((seedOffset * 17) % 1) - 0.5) * 20}
+              y2={startY + (((seedOffset * 23) % 1) - 0.5) * 20}
               stroke="rgba(0,0,0,0.6)"
               strokeWidth={2}
             />

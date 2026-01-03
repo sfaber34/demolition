@@ -1,10 +1,10 @@
 "use client";
 
 import React from "react";
-import { Car as CarType } from "../types";
+import { CarSim } from "../sim/typesSim";
 
 interface HUDProps {
-  cars: CarType[];
+  cars: CarSim[];
 }
 
 export const HUD: React.FC<HUDProps> = ({ cars }) => {
@@ -27,7 +27,7 @@ export const HUD: React.FC<HUDProps> = ({ cars }) => {
 };
 
 interface CarStatusProps {
-  car: CarType;
+  car: CarSim;
   isActive: boolean;
 }
 

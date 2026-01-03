@@ -1,11 +1,11 @@
 "use client";
 
 import React from "react";
-import { Car as CarType } from "../types";
+import { CarSim } from "../sim/typesSim";
 
 interface GameOverScreenProps {
-  winner: CarType | null;
-  cars: CarType[];
+  winner: CarSim | null;
+  cars: CarSim[];
   gameTime: number;
   onRestart: () => void;
 }

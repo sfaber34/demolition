@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { Car as CarType, DamageNumber, Explosion, SmokeParticle, Spark, TireMark } from "../types";
+import { DamageNumber, Explosion, SmokeParticle, Spark, TireMark } from "../effects/effectsTypes";
+import { CarSim } from "../sim/typesSim";
 
 // Tire marks on the ground
 export const TireMarks: React.FC<{ marks: TireMark[] }> = ({ marks }) => (
@@ -56,10 +57,10 @@ export const SmokeParticles: React.FC<{ particles: SmokeParticle[] }> = ({ parti
   </g>
 );
 
-// Explosion effect
+// Explosion effect - uses ageMs instead of Date.now()
 export const ExplosionEffect: React.FC<{ explosion: Explosion }> = ({ explosion }) => {
-  const elapsed = Date.now() - explosion.startTime;
-  const progress = Math.min(1, elapsed / explosion.duration);
+  // Use ageMs for progress instead of Date.now()
+  const progress = Math.min(1, explosion.ageMs / explosion.duration);
 
   return (
     <g>
@@ -109,7 +110,9 @@ export const ExplosionEffect: React.FC<{ explosion: Explosion }> = ({ explosion 
 };
 
 // Smoke/Fire effects for damaged cars
-export const CarEffects: React.FC<{ car: CarType }> = ({ car }) => {
+// Note: These still use Date.now() for continuous animation since they're
+// purely visual effects that don't affect game state
+export const CarEffects: React.FC<{ car: CarSim }> = ({ car }) => {
   if (!car.isAlive) {
     // Dead car - continuous smoke
     return (
@@ -171,10 +174,10 @@ export const CarEffects: React.FC<{ car: CarType }> = ({ car }) => {
               return (
                 <circle
                   key={`fire-${i}`}
-                  cx={car.position.x + (Math.random() - 0.5) * 10}
-                  cy={car.position.y + (Math.random() - 0.5) * 10}
-                  r={4 + Math.random() * 3}
-                  fill={`rgba(255, ${100 + Math.random() * 100}, 0, ${flicker * 0.5})`}
+                  cx={car.position.x + (Math.sin(Date.now() / 100 + i) - 0.5) * 10}
+                  cy={car.position.y + (Math.cos(Date.now() / 80 + i * 2) - 0.5) * 10}
+                  r={4 + Math.sin(Date.now() / 50 + i * 3) * 1.5}
+                  fill={`rgba(255, ${100 + Math.sin(Date.now() / 30 + i) * 50}, 0, ${flicker * 0.5})`}
                   style={{ filter: "blur(1px)" }}
                 />
               );
@@ -189,7 +192,7 @@ export const CarEffects: React.FC<{ car: CarType }> = ({ car }) => {
 };
 
 // Dust cloud effect when moving
-export const DustCloud: React.FC<{ car: CarType }> = ({ car }) => {
+export const DustCloud: React.FC<{ car: CarSim }> = ({ car }) => {
   if (!car.isAlive) return null;
 
   const speed = Math.sqrt(car.velocity.x * car.velocity.x + car.velocity.y * car.velocity.y);
@@ -205,10 +208,13 @@ export const DustCloud: React.FC<{ car: CarType }> = ({ car }) => {
   return (
     <g>
       {Array.from({ length: particleCount }).map((_, i) => {
-        const spread = (Math.random() - 0.5) * 20;
-        const x = rearX + spread;
-        const y = rearY + spread;
-        const size = 4 + Math.random() * 6;
+        // Use deterministic offset based on time + index for some variation
+        const timeOffset = (Date.now() / 50 + i * 37) % 100;
+        const spreadX = Math.sin(timeOffset * 0.3 + i * 1.5) * 10;
+        const spreadY = Math.cos(timeOffset * 0.25 + i * 2) * 10;
+        const x = rearX + spreadX;
+        const y = rearY + spreadY;
+        const size = 4 + (timeOffset % 1) * 6;
 
         return (
           <circle
