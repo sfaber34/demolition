@@ -209,10 +209,10 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     // Calculate impact speed for physics and damage
     const relVel = vec.sub(carA.velocity, carB.velocity);
     const velAlongNormal = vec.dot(relVel, collisionNormal);
-    // velAlongNormal < 0 means cars are CLOSING (approaching each other)
-    // velAlongNormal > 0 means cars are SEPARATING (moving apart)
+    // velAlongNormal > 0 means cars are CLOSING (A approaching B along normal direction)
+    // velAlongNormal < 0 means cars are SEPARATING (moving apart)
     // Only count CLOSING velocity for damage - separating cars shouldn't take impact damage
-    const relativeImpact = velAlongNormal < 0 ? -velAlongNormal : 0;
+    const relativeImpact = velAlongNormal > 0 ? velAlongNormal : 0;
     const speedA = vec.length(carA.velocity);
     const speedB = vec.length(carB.velocity);
     const combinedSpeed = (speedA + speedB) * 0.5;
@@ -363,6 +363,34 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
         totalDamage: 0,
         wasFiltered: true,
         filterReason: `damageImpactSpeed ${damageImpactSpeed.toFixed(1)} < ${MIN_DAMAGE_SPEED}`,
+      });
+      return { damageA: 0, damageB: 0 };
+    }
+
+    // Additional grinding protection:
+    // Even if closing velocity is non-zero (AI throttle into contact), if BOTH cars are moving slowly,
+    // treat it as a push/grind and do not apply damage.
+    // This prevents damage "ticks" every cooldown while nose-to-nose.
+    const MIN_CAR_SPEED_FOR_DAMAGE = 6;
+    if (Math.max(speedA, speedB) < MIN_CAR_SPEED_FOR_DAMAGE) {
+      debugLog.log({
+        timestamp: nowMs,
+        gameTimeMs: 0,
+        type: "car_collision",
+        carA: makeSnapshot(carA, speedA),
+        carB: makeSnapshot(carB, speedB),
+        contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
+        collisionNormal: { x: normal.x, y: normal.y },
+        penetration,
+        relativeVelocity: { x: relVelForLog.x, y: relVelForLog.y },
+        relativeImpact: collision.damageImpactSpeed,
+        combinedSpeed: impactSpeed,
+        damageImpactSpeed,
+        damageA: 0,
+        damageB: 0,
+        totalDamage: 0,
+        wasFiltered: true,
+        filterReason: `both cars slow (maxSpeed ${Math.max(speedA, speedB).toFixed(1)} < ${MIN_CAR_SPEED_FOR_DAMAGE})`,
       });
       return { damageA: 0, damageB: 0 };
     }
