@@ -106,7 +106,8 @@ export interface Collision {
   carB: CarSim;
   normal: Vector2D;
   penetration: number;
-  impactSpeed: number;
+  impactSpeed: number; // Used for physics resolution
+  damageImpactSpeed: number; // Used for damage calculation (relative velocity only)
   contactPoint: Vector2D;
 }
 

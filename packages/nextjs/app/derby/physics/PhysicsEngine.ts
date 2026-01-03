@@ -11,6 +11,7 @@ import {
   Vector2D,
   WallCollision,
 } from "../sim/typesSim";
+import { CarSnapshot, debugLog } from "../utils/debugLog";
 
 // ============ Vector Utilities ============
 
@@ -75,6 +76,38 @@ export interface IPhysicsEngine {
 
 // ============ Default Physics Implementation ============
 // (Current SAT-based physics)
+
+// Collision cooldown tracking - prevents grinding damage
+const COLLISION_COOLDOWN_MS = 400; // Minimum time between damage for same car pair
+const collisionCooldowns: Map<string, number> = new Map();
+
+function getCollisionPairKey(idA: string, idB: string): string {
+  // Always put smaller id first for consistent key
+  return idA < idB ? `${idA}:${idB}` : `${idB}:${idA}`;
+}
+
+function canDealDamage(idA: string, idB: string, nowMs: number): boolean {
+  const key = getCollisionPairKey(idA, idB);
+  const lastCollision = collisionCooldowns.get(key);
+  if (lastCollision && nowMs - lastCollision < COLLISION_COOLDOWN_MS) {
+    return false;
+  }
+  return true;
+}
+
+function recordCollision(idA: string, idB: string, nowMs: number): void {
+  const key = getCollisionPairKey(idA, idB);
+  collisionCooldowns.set(key, nowMs);
+}
+
+// Clean up old cooldowns periodically
+function cleanupCooldowns(nowMs: number): void {
+  for (const [key, time] of collisionCooldowns.entries()) {
+    if (nowMs - time > COLLISION_COOLDOWN_MS * 2) {
+      collisionCooldowns.delete(key);
+    }
+  }
+}
 
 class DefaultPhysicsEngine implements IPhysicsEngine {
   applyControls(car: CarSim, input: CarInput, dtMs: number): void {
@@ -173,13 +206,38 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       collisionNormal = vec.mul(collisionNormal, -1);
     }
 
-    // Calculate impact speed
+    // Calculate impact speed for physics and damage
     const relVel = vec.sub(carA.velocity, carB.velocity);
     const relativeImpact = Math.abs(vec.dot(relVel, collisionNormal));
     const speedA = vec.length(carA.velocity);
     const speedB = vec.length(carB.velocity);
     const combinedSpeed = (speedA + speedB) * 0.5;
+
+    // For physics resolution, use the higher of relative or combined
     const impactSpeed = Math.max(relativeImpact, combinedSpeed);
+
+    // For DAMAGE calculation:
+    // - relativeImpact: good for head-on (cars approaching each other)
+    // - For side/chase hits, we need to consider if cars are actually MOVING FAST
+    // Key insight: if BOTH cars are slow (<5), it's a push match - no damage
+    // Realistic speeds: cars typically move at 5-12, max observed ~15
+    const minSpeed = Math.min(speedA, speedB);
+    const maxSpeed = Math.max(speedA, speedB);
+
+    // Damage impact: use relative impact, but boost it if one car is fast
+    // This prevents slow pushing from causing damage while allowing fast hits
+    let damageImpactSpeed = relativeImpact;
+
+    // If the faster car is moving at a good clip, ensure fast hits register
+    if (maxSpeed > 10) {
+      // Blend: mostly relative impact, but ensure fast hits register
+      damageImpactSpeed = Math.max(relativeImpact, maxSpeed * 0.6);
+    }
+
+    // But if BOTH cars are very slow, cap the damage impact to prevent grinding
+    if (minSpeed < 4 && maxSpeed < 6) {
+      damageImpactSpeed = 0; // True grinding - no damage
+    }
 
     const contactPoint = vec.lerp(carA.position, carB.position, 0.5);
 
@@ -189,12 +247,13 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       normal: collisionNormal,
       penetration: minOverlap,
       impactSpeed,
+      damageImpactSpeed,
       contactPoint,
     };
   }
 
   resolveCarCollision(collision: Collision): { damageA: number; damageB: number } {
-    const { carA, carB, normal, penetration, impactSpeed } = collision;
+    const { carA, carB, normal, penetration, impactSpeed, damageImpactSpeed } = collision;
 
     // Separate cars
     const separation = vec.mul(normal, penetration / 2 + 2);
@@ -269,39 +328,141 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     carA.angularVelocity *= 0.85;
     carB.angularVelocity *= 0.85;
 
-    // Calculate damage
-    const MIN_DAMAGE_SPEED = 5;
-    if (impactSpeed < MIN_DAMAGE_SPEED) {
+    // Calculate damage using damageImpactSpeed
+    // Based on log analysis: max car speed is ~12, max relative impact is ~17
+    // Threshold should be low enough to allow damage but filter slow pushing
+    const MIN_DAMAGE_SPEED = 10;
+
+    // Cleanup old cooldowns periodically
+    const nowMs = Date.now();
+    cleanupCooldowns(nowMs);
+
+    // Helper to create car snapshot
+    const makeSnapshot = (car: CarSim, speed: number): CarSnapshot => ({
+      id: car.id,
+      name: car.name,
+      position: { x: car.position.x, y: car.position.y },
+      velocity: { x: car.velocity.x, y: car.velocity.y },
+      speed,
+      rotation: (car.rotation * 180) / Math.PI,
+      rotationRad: car.rotation,
+      angularVelocity: car.angularVelocity,
+      health: car.health,
+      isAlive: car.isAlive,
+    });
+
+    const relVelForLog = vec.sub(carA.velocity, carB.velocity);
+
+    if (damageImpactSpeed < MIN_DAMAGE_SPEED) {
+      // Log filtered collision with full detail
+      debugLog.log({
+        timestamp: nowMs,
+        gameTimeMs: 0,
+        type: "car_collision",
+        carA: makeSnapshot(carA, speedA),
+        carB: makeSnapshot(carB, speedB),
+        contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
+        collisionNormal: { x: normal.x, y: normal.y },
+        penetration,
+        relativeVelocity: { x: relVelForLog.x, y: relVelForLog.y },
+        relativeImpact: collision.damageImpactSpeed,
+        combinedSpeed: impactSpeed,
+        damageImpactSpeed,
+        damageA: 0,
+        damageB: 0,
+        totalDamage: 0,
+        wasFiltered: true,
+        filterReason: `damageImpactSpeed ${damageImpactSpeed.toFixed(1)} < ${MIN_DAMAGE_SPEED}`,
+      });
       return { damageA: 0, damageB: 0 };
     }
 
-    const speedFactor = Math.min(1, impactSpeed / 100);
-    const baseDamage = 5 + impactSpeed * CAR_CONFIG.baseDamageMultiplier * (0.4 + speedFactor * 0.6);
+    // Check collision cooldown - prevents grinding damage from repeated collisions
+    if (!canDealDamage(carA.id, carB.id, nowMs)) {
+      debugLog.log({
+        timestamp: nowMs,
+        gameTimeMs: 0,
+        type: "car_collision",
+        carA: makeSnapshot(carA, speedA),
+        carB: makeSnapshot(carB, speedB),
+        contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
+        collisionNormal: { x: normal.x, y: normal.y },
+        penetration,
+        relativeVelocity: { x: relVelForLog.x, y: relVelForLog.y },
+        relativeImpact: collision.damageImpactSpeed,
+        combinedSpeed: impactSpeed,
+        damageImpactSpeed,
+        damageA: 0,
+        damageB: 0,
+        totalDamage: 0,
+        wasFiltered: true,
+        filterReason: `collision cooldown active`,
+      });
+      return { damageA: 0, damageB: 0 };
+    }
+
+    // Damage scales with relative impact speed (not combined speed)
+    // Realistic max impact speed is ~25-30 (two cars at ~12-15 speed head-on)
+    // Scale formula to realistic max, not theoretical max
+    const REALISTIC_MAX_IMPACT = 25;
+    const speedFactor = Math.min(1, damageImpactSpeed / REALISTIC_MAX_IMPACT);
+    // At max impact (25): baseDamage = 25 * 2.0 * 1.0 = 50 total, split = 25 each (strong hit)
+    // At typical impact (15): baseDamage = 15 * 2.0 * 0.6 = 18 total, split = 9 each (medium hit)
+    // At threshold (10): baseDamage = 10 * 2.0 * 0.4 = 8 total, split = 4 each (light hit)
+    const baseDamage = damageImpactSpeed * CAR_CONFIG.baseDamageMultiplier * speedFactor;
 
     let damageA: number;
     let damageB: number;
 
-    if (speedA > speedB + 25) {
-      damageA = baseDamage * 0.2;
-      damageB = baseDamage * 1.5;
-    } else if (speedB > speedA + 25) {
-      damageA = baseDamage * 1.5;
-      damageB = baseDamage * 0.2;
+    // Attacker (faster car) deals more damage
+    // Thresholds scaled to realistic speeds (cars typically reach 5-12 speed)
+    if (speedA > speedB + 3) {
+      // Car A is faster - B takes more damage
+      damageA = baseDamage * 0.3;
+      damageB = baseDamage * 0.7;
+    } else if (speedB > speedA + 3) {
+      // Car B is faster - A takes more damage
+      damageA = baseDamage * 0.7;
+      damageB = baseDamage * 0.3;
     } else {
-      damageA = baseDamage * 0.6;
-      damageB = baseDamage * 0.6;
+      // Similar speeds - both take moderate damage
+      damageA = baseDamage * 0.5;
+      damageB = baseDamage * 0.5;
     }
 
     // Side/rear hits deal more damage (reuse forwardA/forwardB from above)
     const hitAngleA = Math.abs(vec.dot(forwardA, normal));
     const hitAngleB = Math.abs(vec.dot(forwardB, normal));
 
-    damageA *= 1 + (1 - hitAngleA) * 0.8;
-    damageB *= 1 + (1 - hitAngleB) * 0.8;
+    damageA *= 1 + (1 - hitAngleA) * 0.6;
+    damageB *= 1 + (1 - hitAngleB) * 0.6;
 
     // Cap maximum damage per hit
     damageA = Math.min(damageA, 35);
     damageB = Math.min(damageB, 35);
+
+    // Record collision for cooldown tracking
+    recordCollision(carA.id, carB.id, nowMs);
+
+    // Log collision with damage - full detail
+    debugLog.log({
+      timestamp: nowMs,
+      gameTimeMs: 0,
+      type: "car_collision",
+      carA: makeSnapshot(carA, speedA),
+      carB: makeSnapshot(carB, speedB),
+      contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
+      collisionNormal: { x: normal.x, y: normal.y },
+      penetration,
+      relativeVelocity: { x: relVelForLog.x, y: relVelForLog.y },
+      relativeImpact: collision.damageImpactSpeed,
+      combinedSpeed: impactSpeed,
+      damageImpactSpeed,
+      damageA,
+      damageB,
+      totalDamage: damageA + damageB,
+      wasFiltered: false,
+    });
 
     return { damageA, damageB };
   }
