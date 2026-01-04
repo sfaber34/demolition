@@ -37,8 +37,13 @@ const AI_TUNING = {
   defenseWallMultiplier: 6, // Wall proximity makes threats worse
 
   // Stuck detection
-  stuckDistanceThreshold: 2.0, // Movement less than this = possibly stuck
-  stuckSpeedThreshold: 18, // Speed below this when stuck = confirmed stuck
+  stuckDistanceThreshold: 2.0, // Actual movement less than this = not going anywhere
+  stuckMinStateSpeed: 5, // If state speed above this but not moving = stuck (trying but blocked)
+
+  // Stalemate avoidance
+  stalemateDistanceThreshold: 60, // If closer than this to opponent
+  stalemateMovementThreshold: 3.0, // And moving less than this
+  stalematePenalty: 800, // Big penalty to break stalemates
 };
 
 // ============ Arena Bounds ============
@@ -106,13 +111,19 @@ function distToWall(pos: Vector2D, rotation: number): number {
  * Cheap kinematic prediction of where a car will be after tSec seconds
  * given candidate controls. Doesn't need to be physics-perfect, just good
  * enough to rank candidate actions.
+ *
+ * NOTE: This uses car.velocity (state velocity), not actual movement.
+ * In a stalemate, state velocity may be high even though car is blocked.
+ * The stalemate detection (using position - lastPosition) handles this
+ * by penalizing forward throttle when we detect we're actually stuck.
  */
 function predictState(car: CarSim, controls: Controls, tSec: number): PredictedState {
-  const speed = vec.length(car.velocity);
+  // State velocity magnitude (NOT actual movement - car could be blocked!)
+  const stateSpeed = vec.length(car.velocity);
   const forward = getCarForward(car);
 
-  // Approximate steering: turn rate scales with speed (slow cars can't turn as fast)
-  const turnRate = Math.min(1.2, speed / 30) * car.cornering * 0.14;
+  // Approximate steering: turn rate scales with state speed
+  const turnRate = Math.min(1.2, stateSpeed / 30) * car.cornering * 0.14;
   const frames = tSec * 60; // Approximate frame count
   const deltaRotation = controls.steer * turnRate * frames;
 
@@ -122,17 +133,17 @@ function predictState(car: CarSim, controls: Controls, tSec: number): PredictedS
   // Predict new heading
   const newHeading = vec.normalize(vec.rotate(forward, deltaRotation));
 
-  // Approximate acceleration effect
+  // Approximate acceleration effect on state velocity
   const accelMagnitude = controls.throttle * car.acceleration * car.traction * 1.2;
-  let newSpeed = speed + accelMagnitude * frames;
-  newSpeed = Math.max(0, Math.min(car.maxSpeed, newSpeed));
+  let predictedStateSpeed = stateSpeed + accelMagnitude * frames;
+  predictedStateSpeed = Math.max(0, Math.min(car.maxSpeed, predictedStateSpeed));
 
-  // Predicted velocity and position
-  const vel = vec.mul(newHeading, newSpeed);
+  // Predicted state velocity and position (assumes no collisions blocking movement)
+  const predictedVel = vec.mul(newHeading, predictedStateSpeed);
   // Apply slight damping to match friction behavior
-  const pos = vec.add(car.position, vec.mul(vel, tSec * 0.88));
+  const predictedPos = vec.add(car.position, vec.mul(predictedVel, tSec * 0.88));
 
-  return { pos, vel, speed: newSpeed, rotation: newRotation };
+  return { pos: predictedPos, vel: predictedVel, speed: predictedStateSpeed, rotation: newRotation };
 }
 
 /**
@@ -163,17 +174,19 @@ function scoreWallSafety(predicted: PredictedState): number {
 }
 
 /**
- * Score momentum - reward speed, penalize being slow or reversing
+ * Score momentum - reward predicted state speed, penalize being slow or reversing.
+ * NOTE: Uses predicted STATE speed (from physics velocity), not actual movement.
+ * Stalemate avoidance is handled separately by scoreStalemate().
  */
-function scoreMomentum(predictedSpeed: number, throttle: number): number {
+function scoreMomentum(predictedStateSpeed: number, throttle: number): number {
   let score = 0;
 
-  // Reward speed
-  score += predictedSpeed * AI_TUNING.speedRewardFactor;
+  // Reward state speed
+  score += predictedStateSpeed * AI_TUNING.speedRewardFactor;
 
-  // Penalize being slow
-  if (predictedSpeed < AI_TUNING.lowSpeedThreshold) {
-    score -= (AI_TUNING.lowSpeedThreshold - predictedSpeed) * AI_TUNING.lowSpeedPenaltyFactor;
+  // Penalize low state speed
+  if (predictedStateSpeed < AI_TUNING.lowSpeedThreshold) {
+    score -= (AI_TUNING.lowSpeedThreshold - predictedStateSpeed) * AI_TUNING.lowSpeedPenaltyFactor;
   }
 
   // Penalize reverse (unless we're stuck, handled separately)
@@ -270,6 +283,61 @@ function scoreDefense(self: CarSim, selfPredicted: PredictedState, opponents: Ca
 }
 
 /**
+ * Detect if we're currently in a stalemate with an opponent
+ */
+function isInStalemate(self: CarSim, opponents: CarSim[]): boolean {
+  const myMovement = vec.distance(self.position, self.lastPosition);
+  if (myMovement >= AI_TUNING.stalemateMovementThreshold) {
+    return false; // We're moving
+  }
+
+  for (const opp of opponents) {
+    if (!opp.isAlive || opp.id === self.id) continue;
+
+    const dist = vec.distance(self.position, opp.position);
+    if (dist < AI_TUNING.stalemateDistanceThreshold) {
+      const oppMovement = vec.distance(opp.position, opp.lastPosition);
+      if (oppMovement < AI_TUNING.stalemateMovementThreshold) {
+        return true; // Both stuck and close = stalemate
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Score stalemate-breaking actions.
+ * When in a stalemate, penalize driving forward (continues stalemate)
+ * and reward turning/reversing (breaks stalemate).
+ */
+function scoreStalemate(self: CarSim, opponents: CarSim[], controls: Controls): number {
+  if (!isInStalemate(self, opponents)) {
+    return 0; // Not in stalemate, no adjustment needed
+  }
+
+  // We're in a stalemate - score based on whether this action breaks it
+  let score = 0;
+
+  // Penalize driving straight forward (steer near 0, throttle positive)
+  // This continues the stalemate
+  if (Math.abs(controls.steer) < 0.4 && controls.throttle > 0.3) {
+    score -= AI_TUNING.stalematePenalty;
+  }
+
+  // Reward turning hard (breaks the lock)
+  if (Math.abs(controls.steer) > 0.6) {
+    score += AI_TUNING.stalematePenalty * 0.5;
+  }
+
+  // Reward reversing (backs out of stalemate)
+  if (controls.throttle < 0) {
+    score += AI_TUNING.stalematePenalty * 0.7;
+  }
+
+  return score;
+}
+
+/**
  * Score a candidate control action
  */
 function scoreCandidate(self: CarSim, cars: CarSim[], controls: Controls): number {
@@ -279,17 +347,21 @@ function scoreCandidate(self: CarSim, cars: CarSim[], controls: Controls): numbe
   const momentumScore = scoreMomentum(predicted.speed, controls.throttle);
   const attackScore = scoreAttack(self, predicted, cars, AI_TUNING.lookaheadSec);
   const defenseScore = scoreDefense(self, predicted, cars, AI_TUNING.lookaheadSec);
+  const stalemateScore = scoreStalemate(self, cars, controls);
 
-  return wallScore + momentumScore + attackScore + defenseScore;
+  return wallScore + momentumScore + attackScore + defenseScore + stalemateScore;
 }
 
 /**
- * Check if car appears stuck
+ * Check if car appears stuck (not moving despite trying).
+ * Uses ACTUAL movement (position delta), not state velocity.
  */
 function isStuck(car: CarSim): boolean {
-  const movement = vec.distance(car.position, car.lastPosition);
-  const speed = vec.length(car.velocity);
-  return movement < AI_TUNING.stuckDistanceThreshold && speed < AI_TUNING.stuckSpeedThreshold;
+  const actualMovement = vec.distance(car.position, car.lastPosition);
+  const stateSpeed = vec.length(car.velocity);
+  // Stuck = not moving much, but trying (has state velocity)
+  // This catches both: blocked stalemates AND truly stuck (wall corner)
+  return actualMovement < AI_TUNING.stuckDistanceThreshold && stateSpeed > AI_TUNING.stuckMinStateSpeed;
 }
 
 /**

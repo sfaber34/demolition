@@ -209,27 +209,30 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     }
 
     // Calculate impact speed for physics and damage
+    //
+    // IMPORTANT: car.velocity is the PHYSICS STATE velocity, NOT actual movement!
+    // In a stalemate, throttle keeps adding to velocity even though cars are blocked.
+    // So we need TWO different velocity concepts:
+    // 1. stateVelocity (car.velocity) - used for physics impulse calculations
+    // 2. actualMovement (position - lastPosition) - used for damage eligibility
+    //
     const relVel = vec.sub(carA.velocity, carB.velocity);
     const velAlongNormal = vec.dot(relVel, collisionNormal);
-    // velAlongNormal > 0 means cars are CLOSING (A approaching B along normal direction)
-    // velAlongNormal < 0 means cars are SEPARATING (moving apart)
-    // Only count CLOSING velocity for damage - separating cars shouldn't take impact damage
-    const relativeImpact = velAlongNormal > 0 ? velAlongNormal : 0;
-    const speedA = vec.length(carA.velocity);
-    const speedB = vec.length(carB.velocity);
-    const combinedSpeed = (speedA + speedB) * 0.5;
+    // velAlongNormal > 0 means cars have velocity vectors CLOSING (A approaching B along normal)
+    // velAlongNormal < 0 means velocity vectors are SEPARATING
+    // Note: This can be positive in a stalemate due to throttle!
+    const closingStateVelocity = velAlongNormal > 0 ? velAlongNormal : 0;
+    const stateSpeedA = vec.length(carA.velocity);
+    const stateSpeedB = vec.length(carB.velocity);
+    const combinedStateSpeed = (stateSpeedA + stateSpeedB) * 0.5;
 
-    // For physics resolution, use the higher of relative or combined
-    const impactSpeed = Math.max(relativeImpact, combinedSpeed);
+    // For physics resolution (impulses/bouncing), use state velocity
+    const impactSpeed = Math.max(closingStateVelocity, combinedStateSpeed);
 
-    // For DAMAGE calculation:
-    // Use relativeImpact directly - this is the CLOSING VELOCITY (how fast cars are approaching)
-    // This correctly handles:
-    // - Two slow cars (speed 4 each) moving toward each other = relativeImpact 8 (damage!)
-    // - Two cars stuck grinding (not closing) = relativeImpact near 0 (no damage)
-    // The collision cooldown (400ms) prevents repeated damage while stuck
-    // The MIN_DAMAGE_SPEED threshold filters very light bumps
-    const damageImpactSpeed = relativeImpact;
+    // For DAMAGE calculation, we'll use closingStateVelocity as a baseline,
+    // but the actual damage eligibility check in resolveCarCollision uses
+    // actual movement (position - lastPosition) to filter out stalemates.
+    const damageImpactSpeed = closingStateVelocity;
 
     const contactPoint = vec.lerp(carA.position, carB.position, 0.5);
 
@@ -256,9 +259,10 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     carA.position = vec.sub(carA.position, separation);
     carB.position = vec.add(carB.position, separation);
 
-    // Get speeds before collision
-    const speedA = vec.length(carA.velocity);
-    const speedB = vec.length(carB.velocity);
+    // Get STATE speeds (velocity magnitude, NOT actual movement!)
+    // In a stalemate, these can be high even though cars aren't moving
+    const stateSpeedA = vec.length(carA.velocity);
+    const stateSpeedB = vec.length(carB.velocity);
 
     // Calculate relative velocity along collision normal
     const relVel = vec.sub(carA.velocity, carB.velocity);
@@ -273,13 +277,13 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       carB.velocity = vec.sub(carB.velocity, impulseVec);
 
       // Momentum transfer
-      if (speedA > speedB + 20) {
-        const pushStrength = (speedA - speedB) * 0.4;
+      if (stateSpeedA > stateSpeedB + 20) {
+        const pushStrength = (stateSpeedA - stateSpeedB) * 0.4;
         const pushDir = vec.normalize(carA.velocity);
         carB.velocity = vec.add(carB.velocity, vec.mul(pushDir, pushStrength));
         carA.velocity = vec.mul(carA.velocity, 0.7);
-      } else if (speedB > speedA + 20) {
-        const pushStrength = (speedB - speedA) * 0.4;
+      } else if (stateSpeedB > stateSpeedA + 20) {
+        const pushStrength = (stateSpeedB - stateSpeedA) * 0.4;
         const pushDir = vec.normalize(carB.velocity);
         carA.velocity = vec.add(carA.velocity, vec.mul(pushDir, pushStrength));
         carB.velocity = vec.mul(carB.velocity, 0.7);
@@ -354,8 +358,8 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
         timestamp: nowMs,
         gameTimeMs: nowMs,
         type: "car_collision",
-        carA: makeSnapshot(carA, speedA),
-        carB: makeSnapshot(carB, speedB),
+        carA: makeSnapshot(carA, stateSpeedA),
+        carB: makeSnapshot(carB, stateSpeedB),
         contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
         collisionNormal: { x: normal.x, y: normal.y },
         penetration,
@@ -372,18 +376,18 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       return { damageA: 0, damageB: 0 };
     }
 
-    // Additional grinding protection:
-    // Even if closing velocity is non-zero (AI throttle into contact), if BOTH cars are moving slowly,
-    // treat it as a push/grind and do not apply damage.
-    // This prevents damage "ticks" every cooldown while nose-to-nose.
-    const MIN_CAR_SPEED_FOR_DAMAGE = 6;
-    if (Math.max(speedA, speedB) < MIN_CAR_SPEED_FOR_DAMAGE) {
+    // State velocity check:
+    // If both cars have low state velocity (not pushing hard), skip damage.
+    // NOTE: This checks velocity magnitude, not actual movement!
+    // A car in a stalemate applying throttle will have HIGH state velocity.
+    const MIN_STATE_SPEED_FOR_DAMAGE = 6;
+    if (Math.max(stateSpeedA, stateSpeedB) < MIN_STATE_SPEED_FOR_DAMAGE) {
       debugLog.log({
         timestamp: nowMs,
         gameTimeMs: nowMs,
         type: "car_collision",
-        carA: makeSnapshot(carA, speedA),
-        carB: makeSnapshot(carB, speedB),
+        carA: makeSnapshot(carA, stateSpeedA),
+        carB: makeSnapshot(carB, stateSpeedB),
         contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
         collisionNormal: { x: normal.x, y: normal.y },
         penetration,
@@ -395,7 +399,38 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
         damageB: 0,
         totalDamage: 0,
         wasFiltered: true,
-        filterReason: `both cars slow (maxSpeed ${Math.max(speedA, speedB).toFixed(1)} < ${MIN_CAR_SPEED_FOR_DAMAGE})`,
+        filterReason: `low state velocity (max ${Math.max(stateSpeedA, stateSpeedB).toFixed(1)} < ${MIN_STATE_SPEED_FOR_DAMAGE})`,
+      });
+      return { damageA: 0, damageB: 0 };
+    }
+
+    // STALEMATE PROTECTION:
+    // Check actual position movement, not just velocity. In a stalemate, cars apply throttle
+    // (so velocity is non-zero) but don't actually move (position stays same).
+    // If neither car has moved significantly, they're locked up - no damage.
+    const MIN_MOVEMENT_FOR_DAMAGE = 3.0; // pixels moved since last frame
+    const movementA = vec.distance(carA.position, carA.lastPosition);
+    const movementB = vec.distance(carB.position, carB.lastPosition);
+    const maxMovement = Math.max(movementA, movementB);
+    if (maxMovement < MIN_MOVEMENT_FOR_DAMAGE) {
+      debugLog.log({
+        timestamp: nowMs,
+        gameTimeMs: nowMs,
+        type: "car_collision",
+        carA: makeSnapshot(carA, stateSpeedA),
+        carB: makeSnapshot(carB, stateSpeedB),
+        contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
+        collisionNormal: { x: normal.x, y: normal.y },
+        penetration,
+        relativeVelocity: { x: relVelForLog.x, y: relVelForLog.y },
+        relativeImpact: collision.damageImpactSpeed,
+        combinedSpeed: impactSpeed,
+        damageImpactSpeed,
+        damageA: 0,
+        damageB: 0,
+        totalDamage: 0,
+        wasFiltered: true,
+        filterReason: `stalemate - no movement (maxMovement ${maxMovement.toFixed(1)} < ${MIN_MOVEMENT_FOR_DAMAGE})`,
       });
       return { damageA: 0, damageB: 0 };
     }
@@ -406,8 +441,8 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
         timestamp: nowMs,
         gameTimeMs: nowMs,
         type: "car_collision",
-        carA: makeSnapshot(carA, speedA),
-        carB: makeSnapshot(carB, speedB),
+        carA: makeSnapshot(carA, stateSpeedA),
+        carB: makeSnapshot(carB, stateSpeedB),
         contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
         collisionNormal: { x: normal.x, y: normal.y },
         penetration,
@@ -439,11 +474,11 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
 
     // Attacker (faster car) deals more damage
     // Thresholds scaled to realistic speeds (cars typically reach 5-12 speed)
-    if (speedA > speedB + 3) {
+    if (stateSpeedA > stateSpeedB + 3) {
       // Car A is faster - B takes more damage
       damageA = baseDamage * 0.3;
       damageB = baseDamage * 0.7;
-    } else if (speedB > speedA + 3) {
+    } else if (stateSpeedB > stateSpeedA + 3) {
       // Car B is faster - A takes more damage
       damageA = baseDamage * 0.7;
       damageB = baseDamage * 0.3;
@@ -472,8 +507,8 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       timestamp: nowMs,
       gameTimeMs: nowMs,
       type: "car_collision",
-      carA: makeSnapshot(carA, speedA),
-      carB: makeSnapshot(carB, speedB),
+      carA: makeSnapshot(carA, stateSpeedA),
+      carB: makeSnapshot(carB, stateSpeedB),
       contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
       collisionNormal: { x: normal.x, y: normal.y },
       penetration,
