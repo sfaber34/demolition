@@ -6,7 +6,8 @@ import type { CarController } from "./controllerTypes";
  * Useful as a clean baseline when rebuilding the driving logic.
  */
 export class NoopController implements CarController {
-  update(world: WorldSim): void {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  update(world: WorldSim, dtMs: number, nowMs: number): void {
     if (world.gamePhase !== "playing") return;
     for (const car of world.cars) {
       if (!car.isAlive) continue;

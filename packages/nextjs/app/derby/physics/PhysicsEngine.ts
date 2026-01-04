@@ -671,3 +671,16 @@ export const physicsEngine: IPhysicsEngine = new DefaultPhysicsEngine();
 
 // Also export the class for testing or subclassing
 export { DefaultPhysicsEngine };
+
+// ============ Standalone Utilities ============
+// Convenience exports for use by AI controllers and other modules
+
+/** Get car's forward direction vector from its rotation */
+export function getCarForward(car: CarSim): Vector2D {
+  return vec.fromAngle(car.rotation);
+}
+
+/** Get car's right direction vector from its rotation */
+export function getCarRight(car: CarSim): Vector2D {
+  return vec.fromAngle(car.rotation + Math.PI / 2);
+}

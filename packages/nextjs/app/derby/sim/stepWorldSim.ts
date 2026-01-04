@@ -43,6 +43,10 @@ export function stepWorldSim(world: WorldSim, dtMs: number): SimEvent[] {
   for (const car of world.cars) {
     if (!car.isAlive) continue;
 
+    // Save lastPosition for stuck detection (before position updates)
+    car.lastPosition.x = car.position.x;
+    car.lastPosition.y = car.position.y;
+
     // Apply control inputs (throttle/steer → velocity changes)
     physicsEngine.applyControls(car, car.input, dtMs);
 
