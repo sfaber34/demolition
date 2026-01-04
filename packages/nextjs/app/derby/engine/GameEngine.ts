@@ -8,7 +8,7 @@
 // - Calls stepEffects to update VFX from events
 // - Provides getSnapshot() for React rendering (immutable copy)
 import type { CarController } from "../controllers/controllerTypes";
-import { SimpleAiController } from "../controllers/simpleAiController";
+import { NoopController } from "../controllers/noopController";
 import { EffectsState, createEmptyEffectsState } from "../effects/effectsTypes";
 import { snapshotEffects, stepEffects } from "../effects/stepEffects";
 import { stepWorldSim } from "../sim/stepWorldSim";
@@ -108,7 +108,7 @@ export class GameEngine {
     this.accumulator = 0;
     this.world = this.createInitialWorld();
     this.effects = createEmptyEffectsState();
-    this.controller = new SimpleAiController();
+    this.controller = new NoopController();
   }
 
   private createInitialWorld(): WorldSim {

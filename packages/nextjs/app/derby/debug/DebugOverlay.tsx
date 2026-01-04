@@ -61,7 +61,7 @@ function distToWall(x: number, y: number, rotation: number, carWidth: number, ca
 
 /**
  * Get color based on wall distance (green=safe, yellow=caution, red=danger)
- * NOTE: These thresholds match AI_TUNING in simpleAiController.ts
+ * NOTE: Keep these tiers in sync with the game’s wall-safety heuristics.
  */
 function getWallDistColor(dist: number): string {
   if (dist < 10) return "#ff4444"; // Critical - red (almost touching)
