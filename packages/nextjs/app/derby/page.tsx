@@ -13,6 +13,7 @@ import {
   Sparks,
   StatsPanel,
   TireMarks,
+  TitleScreen,
 } from "./_components";
 import { GameEngine, GameSnapshot } from "./engine/GameEngine";
 import { ARENA_CONFIG } from "./sim/typesSim";
@@ -24,7 +25,6 @@ export default function DerbyPage() {
   // Get initial snapshot for state
   const [gameSnapshot, setGameSnapshot] = useState<GameSnapshot>(() => {
     const engine = new GameEngine(16);
-    engine.start(); // Start playing immediately
     engineRef.current = engine;
     return engine.getSnapshot();
   });
@@ -66,6 +66,18 @@ export default function DerbyPage() {
       }
     };
   }, [gameLoop]);
+
+  const handleStart = () => {
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    engine.start();
+    setGameSnapshot(engine.getSnapshot());
+
+    lastTimeRef.current = 0;
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    animationRef.current = requestAnimationFrame(gameLoop);
+  };
 
   const handleRestart = () => {
     const engine = engineRef.current;
@@ -112,6 +124,8 @@ export default function DerbyPage() {
 
       {/* Main content */}
       <main className="w-full max-w-4xl flex flex-col items-center">
+        {gameSnapshot.gamePhase === "title" && <TitleScreen onStart={handleStart} />}
+
         {gameSnapshot.gamePhase === "gameover" && (
           <GameOverScreen
             winner={gameSnapshot.winner}
