@@ -557,12 +557,18 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     const { car, normal, penetration, impactSpeed } = collision;
 
     // Push car away from wall
-    car.position = vec.add(car.position, vec.mul(normal, penetration + 2));
+    // Small extra offset prevents re-penetration from floating point error without "popping" too far.
+    car.position = vec.add(car.position, vec.mul(normal, penetration + 0.75));
 
-    // Reflect velocity with bounce
+    // Wall contact response:
+    // For low-speed "pushing into the wall" contacts, bouncing each frame causes visible jitter and can
+    // prevent controllers from detecting stable wall contact. So we make low-speed contacts inelastic
+    // (remove the normal component), and only allow bounce for genuinely high-speed impacts.
     const velAlongNormal = vec.dot(car.velocity, normal);
     if (velAlongNormal < 0) {
-      const restitution = PHYSICS_CONFIG.bounceRestitution * 0.7;
+      const BOUNCE_SPEED_THRESHOLD = 18;
+      const restitution = impactSpeed > BOUNCE_SPEED_THRESHOLD ? PHYSICS_CONFIG.bounceRestitution * 0.7 : 0;
+      // Subtract the velocity component into the wall; with restitution=0 this is purely inelastic.
       car.velocity = vec.sub(car.velocity, vec.mul(normal, velAlongNormal * (1 + restitution)));
     }
 
