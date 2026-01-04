@@ -1,4 +1,4 @@
-import { vec } from "../physics/PhysicsEngine";
+import { physicsEngine, vec } from "../physics/PhysicsEngine";
 import { cloneWorldSim, stepWorldSim } from "../sim/stepWorldSim";
 import { ARENA_CONFIG, type CarSim, type SimEvent, type WorldSim } from "../sim/typesSim";
 import type { Controls } from "./controllerTypes";
@@ -37,14 +37,25 @@ function pickNearestTarget(self: CarSim, cars: CarSim[]): CarSim | undefined {
   return best;
 }
 
-function distanceToInnerWall(pos: { x: number; y: number }): number {
-  const innerLeft = ARENA_CONFIG.wallThickness;
-  const innerRight = ARENA_CONFIG.width - ARENA_CONFIG.wallThickness;
-  const innerTop = ARENA_CONFIG.wallThickness;
-  const innerBottom = ARENA_CONFIG.height - ARENA_CONFIG.wallThickness;
-  const dx = Math.min(pos.x - innerLeft, innerRight - pos.x);
-  const dy = Math.min(pos.y - innerTop, innerBottom - pos.y);
-  return Math.min(dx, dy);
+function wallClearanceCorners(car: Pick<CarSim, "position" | "rotation" | "width" | "height">): number {
+  // Use the same geometry basis as wall collisions (rotated corners), otherwise the planner
+  // can think it's "safe" while a corner is actually scraping the wall -> oscillation/rocking loops.
+  const corners = physicsEngine.getCarCorners(car as any);
+  const innerL = ARENA_CONFIG.wallThickness;
+  const innerR = ARENA_CONFIG.width - ARENA_CONFIG.wallThickness;
+  const innerT = ARENA_CONFIG.wallThickness;
+  const innerB = ARENA_CONFIG.height - ARENA_CONFIG.wallThickness;
+
+  let clearance = Infinity;
+  for (const c of corners) {
+    const dLeft = c.x - innerL;
+    const dRight = innerR - c.x;
+    const dTop = c.y - innerT;
+    const dBottom = innerB - c.y;
+    const cornerClear = Math.min(dLeft, dRight, dTop, dBottom);
+    if (cornerClear < clearance) clearance = cornerClear;
+  }
+  return Number.isFinite(clearance) ? clearance : 0;
 }
 
 function aimedCandidate(self: CarSim, target: CarSim): Controls[] {
@@ -84,8 +95,8 @@ function stickinessBonus(c: Controls, last?: Controls): number {
 
 function wallProximityPenalty(self: CarSim): number {
   // Smooth penalty when approaching walls; stronger than before to avoid “wall glue”.
-  const margin = 80;
-  const d = distanceToInnerWall(self.position);
+  const margin = 110;
+  const d = wallClearanceCorners(self);
   const t = clamp((margin - d) / margin, 0, 1); // 0 far from wall, 1 at/through wall
   return t * t * 60;
 }
@@ -143,6 +154,8 @@ export function planControlsByRollout(world: WorldSim, selfId: string, lastContr
   const distToTargetBefore = target
     ? vec.distance(selfLive.position, target.position)
     : vec.distance(selfLive.position, CENTER);
+  const distToCenterBefore = vec.distance(selfLive.position, CENTER);
+  const wallClearBefore = wallClearanceCorners(selfLive);
 
   if (target) {
     candidates.push(...aimedCandidate(selfLive, target));
@@ -152,8 +165,8 @@ export function planControlsByRollout(world: WorldSim, selfId: string, lastContr
   const horizonSteps = 14; // 224ms horizon; improves stability / reduces “spin circles”.
 
   // If we’re close to a wall, add “escape” candidates (including reverse) that bias back toward center.
-  const wallDistNow = distanceToInnerWall(selfLive.position);
-  if (wallDistNow < 55) {
+  const wallClearNow = wallClearBefore;
+  if (wallClearNow < 80) {
     const toCenter = vec.sub(CENTER, selfLive.position);
     const centerAngle = Math.atan2(toCenter.y, toCenter.x);
     const centerDiff = normAngle(centerAngle - selfLive.rotation);
@@ -205,19 +218,48 @@ export function planControlsByRollout(world: WorldSim, selfId: string, lastContr
       ? vec.distance(simSelfAfter.position, simTarget.position)
       : vec.distance(simSelfAfter.position, CENTER);
     const progress = distToTargetBefore - distToTargetAfter; // + = moved closer
+    const distToCenterAfter = vec.distance(simSelfAfter.position, CENTER);
+    const centerProgress = distToCenterBefore - distToCenterAfter; // + = moved toward center
 
-    const nearWallAfter = distanceToInnerWall(simSelfAfter.position);
-    const wallStuckPenalty = nearWallAfter < 25 && speed < 10 ? 120 : nearWallAfter < 40 && speed < 10 ? 50 : 0;
+    const wallClearAfter = wallClearanceCorners(simSelfAfter);
+    const wallStuckPenalty = wallClearAfter < 25 && speed < 10 ? 140 : wallClearAfter < 45 && speed < 10 ? 70 : 0;
+    const wallClearGain = wallClearAfter - wallClearBefore;
+    const wallClearLoss = Math.max(0, wallClearBefore - wallClearAfter);
+
+    // Control thrash penalties (important near walls).
+    const throttleSignFlip =
+      lastControls && Math.sign(lastControls.throttle) !== 0 && Math.sign(c.throttle) !== 0
+        ? Math.sign(lastControls.throttle) !== Math.sign(c.throttle)
+        : false;
+    const steerSignFlip =
+      lastControls && Math.sign(lastControls.steer) !== 0 && Math.sign(c.steer) !== 0
+        ? Math.sign(lastControls.steer) !== Math.sign(c.steer)
+        : false;
+
+    // When near a wall, center-progress matters more than target chasing (target can be near walls).
+    const nearWallNow = wallClearBefore < 70;
+    const progressWeight = nearWallNow ? 0.02 : 0.08;
+    const centerWeight = nearWallNow ? 0.18 : 0.02;
 
     const shaped =
       breakdown.score +
       // Keep momentum, but much less important than “go somewhere”.
       speed * 0.015 +
-      // Move toward a target (or center if none).
-      progress * 0.08 +
+      // Move toward a target (or center if none). Reduced near walls.
+      progress * progressWeight +
+      // Always include a bias toward the center; strongly increased near walls.
+      centerProgress * centerWeight +
       // Strongly avoid walls.
       -wallProximityPenalty(simSelfAfter) -
       wallStuckPenalty +
+      // Avoid the "back 30px then head back to wall" oscillation:
+      // reward increasing wall clearance when we're already close.
+      (wallClearBefore < 90 ? wallClearGain * 0.45 : 0) +
+      // And heavily penalize *losing* clearance when we're near a wall.
+      (nearWallNow ? -wallClearLoss * 3.5 : 0) +
+      // Penalize flipping directions near walls (this creates rocking).
+      (nearWallNow && throttleSignFlip ? -28 : 0) +
+      (nearWallNow && steerSignFlip ? -10 : 0) +
       // Avoid circling/spin: penalize angular velocity and large steering.
       -angVel * 22 -
       Math.abs(c.steer) * 3.5 +

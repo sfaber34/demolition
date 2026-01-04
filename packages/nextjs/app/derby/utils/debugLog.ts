@@ -55,10 +55,62 @@ export interface CollisionLogEntry {
   filterReason?: string;
 }
 
+export interface EscapeLogEntry {
+  index: number;
+  timestamp: number;
+  gameTimeMs: number;
+  type: "escape";
+  event: "enter" | "tick" | "exit";
+
+  car: CarSnapshot;
+  input: { throttle: number; steer: number };
+
+  // Escape context
+  wallClear: number;
+  nearWall: boolean;
+  contactZone: boolean;
+  pushingIntoWall: boolean;
+  moved: number;
+  wallStuckMs: number;
+
+  escapeMaxMs: number;
+  escapeMinMs: number;
+  clearStableMs: number;
+  clearNow: boolean;
+  startClear: number;
+
+  // Decision info
+  toCenter: { x: number; y: number };
+  dotToCenter: number;
+  desiredGear: 1 | -1;
+  gear: 1 | -1;
+  gearHoldMs: number;
+}
+
+export interface PlanLogEntry {
+  index: number;
+  timestamp: number;
+  gameTimeMs: number;
+  type: "plan";
+  car: CarSnapshot;
+  input: { throttle: number; steer: number };
+  wallClear: number;
+  toCenter: { x: number; y: number };
+  dotToCenter: number;
+  note?: string;
+}
+
+export type DebugLogEntry = CollisionLogEntry | EscapeLogEntry | PlanLogEntry;
+
+function isCollisionLogEntry(e: DebugLogEntry): e is CollisionLogEntry {
+  return e.type === "car_collision" || e.type === "wall_collision";
+}
+
 class DebugLogger {
-  private logs: CollisionLogEntry[] = [];
+  private logs: DebugLogEntry[] = [];
   private maxLogs = 1000;
   private enabled = COLLISION_LOGGING_ENABLED;
+  private enabledTypes: Set<DebugLogEntry["type"]> | null = null; // null = all types
   private logIndex = 0;
 
   enable() {
@@ -74,25 +126,50 @@ class DebugLogger {
     this.logIndex = 0;
   }
 
-  log(entry: Omit<CollisionLogEntry, "index">) {
+  /**
+   * Increase this when debugging longer behaviors. Note: logs are kept in-memory in the browser.
+   */
+  setMaxLogs(max: number) {
+    this.maxLogs = Math.max(10, Math.floor(max));
+    // Trim if needed.
+    if (this.logs.length > this.maxLogs) {
+      this.logs = this.logs.slice(-this.maxLogs);
+    }
+  }
+
+  /**
+   * Restrict which log entry types are recorded. Useful to avoid collisions flooding the buffer.
+   * Example: `window.debugLog.setEnabledTypes(["escape"])`
+   */
+  setEnabledTypes(types: DebugLogEntry["type"][] | null) {
+    this.enabledTypes = types ? new Set(types) : null;
+  }
+
+  log(entry: Omit<CollisionLogEntry, "index">): void;
+  log(entry: Omit<EscapeLogEntry, "index">): void;
+  log(entry: Omit<PlanLogEntry, "index">): void;
+  log(entry: Omit<DebugLogEntry, "index">) {
     if (!this.enabled) return;
-    this.logs.push({ ...entry, index: this.logIndex++ });
+    if (this.enabledTypes && !this.enabledTypes.has((entry as any).type)) return;
+    // The overloads guarantee correctness at call sites; we cast here to avoid
+    // union-spread narrowing issues in TS.
+    this.logs.push({ ...(entry as any), index: this.logIndex++ } as DebugLogEntry);
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();
     }
   }
 
-  getLogs(): CollisionLogEntry[] {
+  getLogs(): DebugLogEntry[] {
     return [...this.logs];
   }
 
-  getRecentLogs(count: number = 20): CollisionLogEntry[] {
+  getRecentLogs(count: number = 20): DebugLogEntry[] {
     return this.logs.slice(-count);
   }
 
   // Get summary stats
   getSummary() {
-    const carCollisions = this.logs.filter(l => l.type === "car_collision");
+    const carCollisions = this.logs.filter(isCollisionLogEntry).filter(l => l.type === "car_collision");
     const damaging = carCollisions.filter(l => !l.wasFiltered);
     const filtered = carCollisions.filter(l => l.wasFiltered);
 
@@ -131,7 +208,7 @@ class DebugLogger {
   // Print recent logs to console in readable format
   printRecent(count: number = 10) {
     const recent = this.getRecentLogs(count);
-    console.log("=== Recent Collision Logs ===");
+    console.log("=== Recent Debug Logs ===");
     recent.forEach(log => {
       if (log.type === "car_collision" && log.carA && log.carB) {
         console.log(
@@ -141,6 +218,23 @@ class DebugLogger {
           `\n  RelImpact=${log.relativeImpact.toFixed(1)} DmgImpact=${log.damageImpactSpeed.toFixed(1)}`,
           `\n  Damage: A=${log.damageA.toFixed(1)} B=${log.damageB.toFixed(1)}`,
           log.wasFiltered ? `\n  FILTERED: ${log.filterReason}` : "",
+        );
+      } else if (log.type === "escape") {
+        console.log(
+          `[${log.index}] ESCAPE ${log.event} ${log.car.name}`,
+          `\n  pos=(${log.car.position.x.toFixed(0)},${log.car.position.y.toFixed(0)}) speed=${log.car.speed.toFixed(1)} wallClear=${log.wallClear.toFixed(1)}`,
+          `\n  nearWall=${log.nearWall} contactZone=${log.contactZone} pushingIntoWall=${log.pushingIntoWall} moved=${log.moved.toFixed(2)} stuckMs=${log.wallStuckMs.toFixed(0)}`,
+          `\n  escapeMax=${log.escapeMaxMs.toFixed(0)} escapeMin=${log.escapeMinMs.toFixed(0)} clearNow=${log.clearNow} clearStable=${log.clearStableMs.toFixed(0)} startClear=${log.startClear.toFixed(1)}`,
+          `\n  toCenter=(${log.toCenter.x.toFixed(2)},${log.toCenter.y.toFixed(2)}) dot=${log.dotToCenter.toFixed(2)} gear=${log.gear} desiredGear=${log.desiredGear} holdMs=${log.gearHoldMs.toFixed(0)}`,
+          `\n  input throttle=${log.input.throttle.toFixed(2)} steer=${log.input.steer.toFixed(2)}`,
+        );
+      } else if (log.type === "plan") {
+        console.log(
+          `[${log.index}] PLAN ${log.car.name}`,
+          `\n  pos=(${log.car.position.x.toFixed(0)},${log.car.position.y.toFixed(0)}) speed=${log.car.speed.toFixed(1)} wallClear=${log.wallClear.toFixed(1)}`,
+          `\n  toCenter=(${log.toCenter.x.toFixed(2)},${log.toCenter.y.toFixed(2)}) dot=${log.dotToCenter.toFixed(2)}`,
+          `\n  input throttle=${log.input.throttle.toFixed(2)} steer=${log.input.steer.toFixed(2)}`,
+          log.note ? `\n  note=${log.note}` : "",
         );
       }
     });
