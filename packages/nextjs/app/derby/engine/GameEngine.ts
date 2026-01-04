@@ -7,11 +7,12 @@
 // - Calls stepWorldSim to advance physics (emits SimEvents)
 // - Calls stepEffects to update VFX from events
 // - Provides getSnapshot() for React rendering (immutable copy)
-import { onAICarImpact, updateAI } from "../controllers/aiController";
+import type { CarController } from "../controllers/controllerTypes";
+import { RolloutController } from "../controllers/rolloutController";
 import { EffectsState, createEmptyEffectsState } from "../effects/effectsTypes";
 import { snapshotEffects, stepEffects } from "../effects/stepEffects";
 import { stepWorldSim } from "../sim/stepWorldSim";
-import { ARENA_CONFIG, CAR_COLORS, CAR_CONFIG, CAR_NAMES, CarSim, SimEvent, Vector2D, WorldSim } from "../sim/typesSim";
+import { ARENA_CONFIG, CAR_COLORS, CAR_CONFIG, CAR_NAMES, CarSim, Vector2D, WorldSim } from "../sim/typesSim";
 
 // ============ Types for UI Snapshot ============
 
@@ -100,12 +101,14 @@ export class GameEngine {
   private effects: EffectsState;
   private fixedDtMs: number;
   private accumulator: number;
+  private controller: CarController;
 
   constructor(fixedDtMs: number = 16) {
     this.fixedDtMs = fixedDtMs;
     this.accumulator = 0;
     this.world = this.createInitialWorld();
     this.effects = createEmptyEffectsState();
+    this.controller = new RolloutController();
   }
 
   private createInitialWorld(): WorldSim {
@@ -114,6 +117,7 @@ export class GameEngine {
       gamePhase: "title",
       winner: null,
       gameTime: 0,
+      collisionCooldowns: {},
     };
   }
 
@@ -144,34 +148,16 @@ export class GameEngine {
     this.accumulator += dtMs;
 
     while (this.accumulator >= this.fixedDtMs) {
-      // 1. Update AI controllers (sets car.input)
-      for (const car of this.world.cars) {
-        if (car.isAlive) {
-          updateAI(car, this.world.cars, this.fixedDtMs);
-        }
-      }
+      // 1. Update controllers (sets car.input)
+      this.controller.update(this.world, this.fixedDtMs, this.world.gameTime);
 
       // 2. Step simulation (applies inputs, physics, collisions)
       const events = stepWorldSim(this.world, this.fixedDtMs);
 
-      // 3. Handle AI reactions to impacts
-      this.handleAIEvents(events);
-
-      // 4. Update effects with events
+      // 3. Update effects with events
       stepEffects(this.effects, events, this.fixedDtMs);
 
       this.accumulator -= this.fixedDtMs;
-    }
-  }
-
-  private handleAIEvents(events: SimEvent[]): void {
-    for (const event of events) {
-      if (event.type === "car_impact") {
-        const carA = this.world.cars.find(c => c.id === event.carAId);
-        const carB = this.world.cars.find(c => c.id === event.carBId);
-        if (carA) onAICarImpact(carA);
-        if (carB) onAICarImpact(carB);
-      }
     }
   }
 

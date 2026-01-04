@@ -1,6 +1,15 @@
 // Debug logging utility for collision/damage analysis
 // Logs are stored in memory and can be saved to server for analysis
 
+/**
+ * Simple global flag to enable/disable collision logging.
+ * - Keep this `false` for normal play (less overhead).
+ * - Set to `true` when you want to analyze collisions/damage.
+ *
+ * You can also toggle at runtime from the console via `window.debugLog.enable()` / `.disable()`.
+ */
+export const COLLISION_LOGGING_ENABLED = false;
+
 export interface CarSnapshot {
   id: string;
   name: string;
@@ -49,7 +58,7 @@ export interface CollisionLogEntry {
 class DebugLogger {
   private logs: CollisionLogEntry[] = [];
   private maxLogs = 1000;
-  private enabled = true;
+  private enabled = COLLISION_LOGGING_ENABLED;
   private logIndex = 0;
 
   enable() {

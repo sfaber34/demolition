@@ -60,6 +60,12 @@ export interface WorldSim {
   gamePhase: "title" | "playing" | "gameover";
   winner: CarSim | null;
   gameTime: number; // accumulated sim time in ms
+
+  /**
+   * Deterministic collision damage cooldowns (ms in sim-time), keyed by "carA:carB".
+   * Stored on the world so rollouts clone it and predictions match live sim.
+   */
+  collisionCooldowns: Record<string, number>;
 }
 
 // ============ Simulation Events ============

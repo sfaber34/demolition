@@ -53,7 +53,11 @@ export interface IPhysicsEngine {
   checkCarCollision(carA: CarSim, carB: CarSim): Collision | null;
 
   // Resolve a car-car collision, returns damage values
-  resolveCarCollision(collision: Collision): { damageA: number; damageB: number };
+  resolveCarCollision(
+    collision: Collision,
+    nowMs: number,
+    cooldowns: CollisionCooldowns,
+  ): { damageA: number; damageB: number };
 
   // Check for collision with arena walls
   checkWallCollision(car: CarSim): WallCollision | null;
@@ -79,33 +83,31 @@ export interface IPhysicsEngine {
 
 // Collision cooldown tracking - prevents grinding damage
 const COLLISION_COOLDOWN_MS = 400; // Minimum time between damage for same car pair
-const collisionCooldowns: Map<string, number> = new Map();
+export type CollisionCooldowns = Record<string, number>;
 
 function getCollisionPairKey(idA: string, idB: string): string {
   // Always put smaller id first for consistent key
   return idA < idB ? `${idA}:${idB}` : `${idB}:${idA}`;
 }
 
-function canDealDamage(idA: string, idB: string, nowMs: number): boolean {
+function canDealDamage(idA: string, idB: string, nowMs: number, cooldowns: CollisionCooldowns): boolean {
   const key = getCollisionPairKey(idA, idB);
-  const lastCollision = collisionCooldowns.get(key);
-  if (lastCollision && nowMs - lastCollision < COLLISION_COOLDOWN_MS) {
+  const lastCollision = cooldowns[key];
+  if (lastCollision !== undefined && nowMs - lastCollision < COLLISION_COOLDOWN_MS) {
     return false;
   }
   return true;
 }
 
-function recordCollision(idA: string, idB: string, nowMs: number): void {
+function recordCollision(idA: string, idB: string, nowMs: number, cooldowns: CollisionCooldowns): void {
   const key = getCollisionPairKey(idA, idB);
-  collisionCooldowns.set(key, nowMs);
+  cooldowns[key] = nowMs;
 }
 
 // Clean up old cooldowns periodically
-function cleanupCooldowns(nowMs: number): void {
-  for (const [key, time] of collisionCooldowns.entries()) {
-    if (nowMs - time > COLLISION_COOLDOWN_MS * 2) {
-      collisionCooldowns.delete(key);
-    }
+function cleanupCooldowns(nowMs: number, cooldowns: CollisionCooldowns): void {
+  for (const [key, time] of Object.entries(cooldowns)) {
+    if (nowMs - time > COLLISION_COOLDOWN_MS * 2) delete cooldowns[key];
   }
 }
 
@@ -242,7 +244,11 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     };
   }
 
-  resolveCarCollision(collision: Collision): { damageA: number; damageB: number } {
+  resolveCarCollision(
+    collision: Collision,
+    nowMs: number,
+    cooldowns: CollisionCooldowns,
+  ): { damageA: number; damageB: number } {
     const { carA, carB, normal, penetration, impactSpeed, damageImpactSpeed } = collision;
 
     // Separate cars
@@ -323,9 +329,8 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     // Most collisions were at 8-10, so lowering threshold to allow more damage
     const MIN_DAMAGE_SPEED = 6;
 
-    // Cleanup old cooldowns periodically
-    const nowMs = Date.now();
-    cleanupCooldowns(nowMs);
+    // Cleanup old cooldowns periodically (sim-time, deterministic)
+    cleanupCooldowns(nowMs, cooldowns);
 
     // Helper to create car snapshot
     const makeSnapshot = (car: CarSim, speed: number): CarSnapshot => ({
@@ -347,7 +352,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       // Log filtered collision with full detail
       debugLog.log({
         timestamp: nowMs,
-        gameTimeMs: 0,
+        gameTimeMs: nowMs,
         type: "car_collision",
         carA: makeSnapshot(carA, speedA),
         carB: makeSnapshot(carB, speedB),
@@ -375,7 +380,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     if (Math.max(speedA, speedB) < MIN_CAR_SPEED_FOR_DAMAGE) {
       debugLog.log({
         timestamp: nowMs,
-        gameTimeMs: 0,
+        gameTimeMs: nowMs,
         type: "car_collision",
         carA: makeSnapshot(carA, speedA),
         carB: makeSnapshot(carB, speedB),
@@ -396,10 +401,10 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     }
 
     // Check collision cooldown - prevents grinding damage from repeated collisions
-    if (!canDealDamage(carA.id, carB.id, nowMs)) {
+    if (!canDealDamage(carA.id, carB.id, nowMs, cooldowns)) {
       debugLog.log({
         timestamp: nowMs,
-        gameTimeMs: 0,
+        gameTimeMs: nowMs,
         type: "car_collision",
         carA: makeSnapshot(carA, speedA),
         carB: makeSnapshot(carB, speedB),
@@ -460,12 +465,12 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     damageB = Math.min(damageB, 35);
 
     // Record collision for cooldown tracking
-    recordCollision(carA.id, carB.id, nowMs);
+    recordCollision(carA.id, carB.id, nowMs, cooldowns);
 
     // Log collision with damage - full detail
     debugLog.log({
       timestamp: nowMs,
-      gameTimeMs: 0,
+      gameTimeMs: nowMs,
       type: "car_collision",
       carA: makeSnapshot(carA, speedA),
       carB: makeSnapshot(carB, speedB),

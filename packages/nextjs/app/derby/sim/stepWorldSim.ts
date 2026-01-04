@@ -76,7 +76,11 @@ export function stepWorldSim(world: WorldSim, dtMs: number): SimEvent[] {
 
       const collision = physicsEngine.checkCarCollision(carA, carB);
       if (collision) {
-        const { damageA, damageB } = physicsEngine.resolveCarCollision(collision);
+        const { damageA, damageB } = physicsEngine.resolveCarCollision(
+          collision,
+          world.gameTime,
+          world.collisionCooldowns,
+        );
 
         // Apply damage
         if (damageA > 0 || damageB > 0) {
@@ -173,6 +177,7 @@ export function cloneWorldSim(world: WorldSim): WorldSim {
     gamePhase: world.gamePhase,
     winner: world.winner ? { ...world.winner } : null,
     gameTime: world.gameTime,
+    collisionCooldowns: { ...world.collisionCooldowns },
   };
 }
 
