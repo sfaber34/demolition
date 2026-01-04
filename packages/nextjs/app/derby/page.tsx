@@ -15,6 +15,7 @@ import {
   TireMarks,
   TitleScreen,
 } from "./_components";
+import { DebugOverlay } from "./debug/DebugOverlay";
 import { GameEngine, GameSnapshot } from "./engine/GameEngine";
 import { ARENA_CONFIG } from "./sim/typesSim";
 
@@ -192,6 +193,9 @@ export default function DerbyPage() {
 
                 {/* Floating damage numbers */}
                 <DamageNumbers damageNumbers={gameSnapshot.effects.damageNumbers} />
+
+                {/* Debug overlay (toggle in debug/debugConfig.ts) */}
+                <DebugOverlay cars={gameSnapshot.cars} />
               </svg>
             </div>
 
