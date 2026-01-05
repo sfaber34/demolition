@@ -74,33 +74,14 @@ function createInitialCars(): CarSim[] {
   const margin = 80;
 
   // Spawn positions near corners
-  // const spawnPositions: { pos: Vector2D; rotation: number }[] = [
-  //   {
-  //     pos: { x: wallThickness + margin + 15, y: wallThickness + margin + 15 },
-  //     rotation: Math.PI / 4,
-  //   },
-  //   {
-  //     pos: { x: width - wallThickness - margin - 15, y: wallThickness + margin + 15 },
-  //     rotation: (3 * Math.PI) / 4,
-  //   },
-  //   {
-  //     pos: { x: wallThickness + margin + 15, y: height - wallThickness - margin - 15 },
-  //     rotation: -Math.PI / 4,
-  //   },
-  //   {
-  //     pos: { x: width - wallThickness - margin - 15, y: height - wallThickness - margin - 15 },
-  //     rotation: (-3 * Math.PI) / 4,
-  //   },
-  // ];
-
   const spawnPositions: { pos: Vector2D; rotation: number }[] = [
     {
-      pos: { x: 100, y: 300 },
-      rotation: Math.PI * 2,
+      pos: { x: wallThickness + margin + 15, y: wallThickness + margin + 15 },
+      rotation: Math.PI / 4,
     },
     {
-      pos: { x: 700, y: 300 },
-      rotation: Math.PI * 2,
+      pos: { x: width - wallThickness - margin - 15, y: wallThickness + margin + 15 },
+      rotation: (3 * Math.PI) / 4,
     },
     {
       pos: { x: wallThickness + margin + 15, y: height - wallThickness - margin - 15 },
