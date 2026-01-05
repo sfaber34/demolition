@@ -51,11 +51,7 @@ export interface CarSim {
   stateTimer: number;
   targetId: string | null;
   stuckTimer: number;
-  lastPosition: Vector2D;
-
-  // Real velocity from previous frame (for use in applyControls before position updates)
-  // This is the ACTUAL movement that occurred, stored at end of frame for next frame's use
-  prevFrameRealVelocity: Vector2D;
+  lastPosition: Vector2D; // For AI stuck detection
 }
 
 /** Core world simulation state */
@@ -117,8 +113,7 @@ export interface Collision {
   carB: CarSim;
   normal: Vector2D;
   penetration: number;
-  impactSpeed: number; // Used for physics resolution
-  damageImpactSpeed: number; // Used for damage calculation (relative velocity only)
+  impactSpeed: number;
   contactPoint: Vector2D;
 }
 

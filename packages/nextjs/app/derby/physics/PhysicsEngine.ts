@@ -42,18 +42,12 @@ export const vec = {
   }),
 };
 
-// ============ Real Velocity Utilities ============
-// SINGLE SOURCE OF TRUTH for real velocity calculations
-// All code MUST use these functions - never calculate position delta manually!
-
 // ============ Velocity Utilities ============
-// After velocity correction in integrateCar(), car.velocity IS the true velocity.
-// Use getSpeed() for most cases. The other functions are for special internal use.
+// car.velocity IS the single source of truth. No "real" vs "state" distinction.
+// Collision resolution ensures velocity stays accurate.
 
 /**
  * Get the car's speed (magnitude of velocity).
- * After physics runs, car.velocity is corrected to match actual movement,
- * so this IS the real speed.
  */
 export function getSpeed(car: CarSim): number {
   return vec.length(car.velocity);
@@ -61,37 +55,9 @@ export function getSpeed(car: CarSim): number {
 
 /**
  * Get the car's velocity vector.
- * After physics runs, car.velocity is corrected to match actual movement,
- * so this IS the real velocity.
  */
 export function getVelocity(car: CarSim): Vector2D {
   return car.velocity;
-}
-
-/**
- * INTERNAL: Calculate velocity from position delta (used for velocity correction).
- * External code should use getSpeed()/getVelocity() instead.
- */
-export function _calcVelocityFromPositionDelta(car: CarSim, dtMs: number = 16): Vector2D {
-  const dt = dtMs / 16.67;
-  const positionDelta = vec.sub(car.position, car.lastPosition);
-  return vec.mul(positionDelta, 1 / dt);
-}
-
-/**
- * Get the velocity from the PREVIOUS frame (before current frame's position updates).
- * Used by applyControls for steering, since position hasn't moved yet.
- */
-export function getPrevFrameVelocity(car: CarSim): Vector2D {
-  return car.prevFrameRealVelocity;
-}
-
-/**
- * Get the speed from the PREVIOUS frame (before current frame's position updates).
- * Used by applyControls for steering, since position hasn't moved yet.
- */
-export function getPrevFrameSpeed(car: CarSim): number {
-  return vec.length(car.prevFrameRealVelocity);
 }
 
 // ============ Physics Interface ============
@@ -171,11 +137,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
 
     const dt = dtMs / 16.67;
     const forward = this.getCarForward(car);
-
-    // Use REAL speed from PREVIOUS FRAME for steering effectiveness
-    // This is the actual movement that occurred, stored before lastPosition was updated.
-    // A car blocked against a wall will have low real speed even with high state velocity.
-    const realSpeed = getPrevFrameSpeed(car);
+    const speed = getSpeed(car);
 
     // Apply throttle
     const accelForce = input.throttle * car.acceleration * car.traction;
@@ -186,10 +148,9 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       car.velocity = vec.add(car.velocity, vec.mul(forward, accelForce * dt));
     }
 
-    // Apply steering - use real speed from previous frame (max achievable is ~10)
-    // Steering effectiveness scales from 0 at standstill to 1.0 at max speed
-    const MAX_REAL_SPEED = 10;
-    const steerEffectiveness = Math.min(1.0, realSpeed / MAX_REAL_SPEED) * car.cornering;
+    // Steering effectiveness scales with speed (max ~10)
+    const MAX_SPEED = 10;
+    const steerEffectiveness = Math.min(1.0, speed / MAX_SPEED) * car.cornering;
     car.angularVelocity += input.steer * 0.02 * steerEffectiveness * dt;
 
     // Clamp angular velocity
@@ -268,24 +229,14 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       collisionNormal = vec.mul(collisionNormal, -1);
     }
 
-    // Calculate impact speed for physics and damage
-    //
-    // For physics (impulses/bouncing): use state velocity
+    // Calculate impact speed from relative velocity
     const relVel = vec.sub(carA.velocity, carB.velocity);
     const velAlongNormal = vec.dot(relVel, collisionNormal);
-    const closingStateVelocity = velAlongNormal > 0 ? velAlongNormal : 0;
-    const stateSpeedA = vec.length(carA.velocity);
-    const stateSpeedB = vec.length(carB.velocity);
-    const combinedStateSpeed = (stateSpeedA + stateSpeedB) * 0.5;
-    const impactSpeed = Math.max(closingStateVelocity, combinedStateSpeed);
-
-    // For DAMAGE: use ACTUAL closing rate based on position change
-    // This prevents damage during grinding (cars pushing but not actually closing)
-    // prevFrameRealVelocity captures actual movement from last frame
-    const actualRelVel = vec.sub(carA.prevFrameRealVelocity, carB.prevFrameRealVelocity);
-    const actualClosingRate = vec.dot(actualRelVel, collisionNormal);
-    // Only count as damage-worthy if cars were ACTUALLY closing (not just in contact)
-    const damageImpactSpeed = actualClosingRate > 1 ? actualClosingRate : 0;
+    const closingVelocity = velAlongNormal > 0 ? velAlongNormal : 0;
+    const speedA = vec.length(carA.velocity);
+    const speedB = vec.length(carB.velocity);
+    const combinedSpeed = (speedA + speedB) * 0.5;
+    const impactSpeed = Math.max(closingVelocity, combinedSpeed);
 
     const contactPoint = vec.lerp(carA.position, carB.position, 0.5);
 
@@ -295,7 +246,6 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       normal: collisionNormal,
       penetration: minOverlap,
       impactSpeed,
-      damageImpactSpeed,
       contactPoint,
     };
   }
@@ -305,18 +255,16 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     nowMs: number,
     cooldowns: CollisionCooldowns,
   ): { damageA: number; damageB: number } {
-    const { carA, carB, normal, penetration, impactSpeed, damageImpactSpeed } = collision;
+    const { carA, carB, normal, penetration, impactSpeed } = collision;
 
-    // Get STATE speeds (velocity magnitude, NOT actual movement!)
-    // In a stalemate, these can be high even though cars aren't moving
-    const stateSpeedA = vec.length(carA.velocity);
-    const stateSpeedB = vec.length(carB.velocity);
+    const speedA = vec.length(carA.velocity);
+    const speedB = vec.length(carB.velocity);
 
     // ============ MOMENTUM-BASED SEPARATION ============
     // Cars with more momentum "own" less of the penetration correction.
     // A fast car hitting a stationary car should push the stationary one more.
-    const momentumA = stateSpeedA + 0.1; // avoid division by zero
-    const momentumB = stateSpeedB + 0.1;
+    const momentumA = speedA + 0.1; // avoid division by zero
+    const momentumB = speedB + 0.1;
     const totalMomentum = momentumA + momentumB;
     // Inverse ratio: fast car gets pushed LESS, slow car gets pushed MORE
     const separationRatioA = momentumB / totalMomentum;
@@ -326,7 +274,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     carA.position = vec.sub(carA.position, vec.mul(normal, separationTotal * separationRatioA));
     carB.position = vec.add(carB.position, vec.mul(normal, separationTotal * separationRatioB));
 
-    // ============ MOMENTUM-BASED IMPULSE PHYSICS ============
+    // ============ IMPULSE PHYSICS ============
     // Calculate relative velocity along collision normal
     const relVel = vec.sub(carA.velocity, carB.velocity);
     const velAlongNormal = vec.dot(relVel, normal);
@@ -336,19 +284,17 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       // Low restitution - cars are heavy metal, not rubber balls
       const restitution = 0.25;
 
-      // ============ MASS-WEIGHTED IMPULSE ============
-      // All cars have similar mass - speed difference creates momentum difference
-      // but we want grounded physics, not pinball
+      // Mass scales slightly with speed
       const baseMass = 2.0;
-      const massA = baseMass + stateSpeedA * 0.15;
-      const massB = baseMass + stateSpeedB * 0.15;
+      const massA = baseMass + speedA * 0.15;
+      const massB = baseMass + speedB * 0.15;
       const invMassA = 1 / massA;
       const invMassB = 1 / massB;
 
       // Impulse formula: j = -(1+e) * Vrel·n / (1/mA + 1/mB)
       const impulseMag = (-(1 + restitution) * velAlongNormal) / (invMassA + invMassB);
 
-      // Apply impulse - lighter car (less momentum) receives MORE velocity change
+      // Apply impulse - lighter car receives MORE velocity change
       const impulseA = vec.mul(normal, impulseMag * invMassA);
       const impulseB = vec.mul(normal, impulseMag * invMassB);
 
@@ -356,23 +302,19 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       carB.velocity = vec.sub(carB.velocity, impulseB);
 
       // ============ POST-COLLISION DAMPING ============
-      // Heavy cars lose energy in collisions - apply damping to both
-      // This prevents the "ice skating" effect
+      // Heavy cars lose energy in collisions
       const collisionDamping = 0.7; // Lose 30% velocity on impact
       carA.velocity = vec.mul(carA.velocity, collisionDamping);
       carB.velocity = vec.mul(carB.velocity, collisionDamping);
 
       // ============ MOMENTUM TRANSFER ============
-      // Faster car pushes slower car, but modestly
-      const speedDiff = stateSpeedA - stateSpeedB;
+      // Faster car pushes slower car
+      const speedDiff = speedA - speedB;
       if (speedDiff > 3) {
-        // Car A is faster - B gets pushed along normal
-        const pushStrength = Math.min(speedDiff * 0.08, 1.5); // Capped push
+        const pushStrength = Math.min(speedDiff * 0.08, 1.5);
         carB.velocity = vec.add(carB.velocity, vec.mul(normal, pushStrength));
-        // Attacker loses some momentum
         carA.velocity = vec.mul(carA.velocity, 0.85);
       } else if (speedDiff < -3) {
-        // Car B is faster - A gets pushed
         const pushStrength = Math.min(Math.abs(speedDiff) * 0.08, 1.5);
         carA.velocity = vec.sub(carA.velocity, vec.mul(normal, pushStrength));
         carB.velocity = vec.mul(carB.velocity, 0.85);
@@ -408,8 +350,8 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     // Speed-based angular resistance: faster cars resist spinning more
     // A stationary car (speed=0) gets full spin, a fast car (speed=10) gets less
     const maxSpeed = 10;
-    const resistanceA = 0.55 + (stateSpeedA / maxSpeed) * 0.45; // 0.55 to 1.0
-    const resistanceB = 0.55 + (stateSpeedB / maxSpeed) * 0.45; // 0.55 to 1.0
+    const resistanceA = 0.55 + (speedA / maxSpeed) * 0.45; // 0.55 to 1.0
+    const resistanceB = 0.55 + (speedB / maxSpeed) * 0.45; // 0.55 to 1.0
 
     // Inverse resistance = how much spin they receive
     // Stationary car: resistance=0.55, receives ~1.8x multiplier
@@ -433,74 +375,40 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     carA.angularVelocity *= 0.95;
     carB.angularVelocity *= 0.95;
 
-    // Calculate damage using damageImpactSpeed
-    // Based on log analysis: max car speed is ~10, typical collisions have damageImpactSpeed 8-15
-    // Most collisions were at 8-10, so lowering threshold to allow more damage
-    const MIN_DAMAGE_SPEED = 6;
-
-    // Cleanup old cooldowns periodically (sim-time, deterministic)
+    // ============ DAMAGE CALCULATION ============
+    // Collision cooldown prevents grinding damage (400ms between hits)
     cleanupCooldowns(nowMs, cooldowns);
-
-    if (damageImpactSpeed < MIN_DAMAGE_SPEED) {
-      return { damageA: 0, damageB: 0 };
-    }
-
-    // STALEMATE PROTECTION:
-    // Check actual position movement, not just velocity. In a stalemate, cars apply throttle
-    // (so velocity is non-zero) but don't actually move (position stays same).
-    // If neither car has moved significantly, they're locked up - no damage.
-    const MIN_MOVEMENT_FOR_DAMAGE = 3.0; // pixels moved since last frame
-    const movementA = vec.distance(carA.position, carA.lastPosition);
-    const movementB = vec.distance(carB.position, carB.lastPosition);
-    const maxMovement = Math.max(movementA, movementB);
-    if (maxMovement < MIN_MOVEMENT_FOR_DAMAGE) {
-      return { damageA: 0, damageB: 0 };
-    }
-
-    // Use REAL speeds for damage calculation (from actual position movement, not state velocity)
-    // prevFrameRealVelocity captures how much each car ACTUALLY moved last frame
-    const actualSpeedA = vec.length(carA.prevFrameRealVelocity);
-    const actualSpeedB = vec.length(carB.prevFrameRealVelocity);
-
-    // Use damageImpactSpeed from collision - it's calculated from prevFrameRealVelocity
-    // which captures actual movement before collision resolution modified anything
-    const actualDamageImpactSpeed = damageImpactSpeed;
-
-    // Check collision cooldown - prevents grinding damage from repeated collisions
     if (!canDealDamage(carA.id, carB.id, nowMs, cooldowns)) {
       return { damageA: 0, damageB: 0 };
     }
 
-    // Damage scales with ACTUAL relative impact speed (not state velocity!)
-    // Use actualDamageImpactSpeed which is based on true position movement
-    // Scale formula to realistic max observed
-    const REALISTIC_MAX_IMPACT = 10;
-    const speedFactor = Math.min(1, actualDamageImpactSpeed / REALISTIC_MAX_IMPACT);
-    // At max impact (15): baseDamage = 15 * 2.0 * 0.94 = 28 total, split = 14 each (strong hit)
-    // At typical impact (10): baseDamage = 10 * 2.0 * 0.625 = 12.5 total, split = 6 each (medium hit)
-    // At threshold (6): baseDamage = 6 * 2.0 * 0.375 = 4.5 total, split = 2.25 each (light hit)
-    const baseDamage = actualDamageImpactSpeed * CAR_CONFIG.baseDamageMultiplier * speedFactor;
+    // Min speed to deal damage
+    const MIN_DAMAGE_SPEED = 6;
+    if (impactSpeed < MIN_DAMAGE_SPEED) {
+      return { damageA: 0, damageB: 0 };
+    }
+
+    // Damage scales with impact speed
+    const MAX_IMPACT = 10;
+    const speedFactor = Math.min(1, impactSpeed / MAX_IMPACT);
+    const baseDamage = impactSpeed * CAR_CONFIG.baseDamageMultiplier * speedFactor;
 
     let damageA: number;
     let damageB: number;
 
-    // Attacker (faster car) takes less damage, target takes more
-    // Use ACTUAL speeds (movement) instead of state velocity!
-    if (actualSpeedA > actualSpeedB + 2) {
-      // Car A is attacking - A takes 15%, B takes 85%
+    // Attacker (faster car) takes less damage
+    if (speedA > speedB + 2) {
       damageA = baseDamage * 0.15;
       damageB = baseDamage * 0.85;
-    } else if (actualSpeedB > actualSpeedA + 2) {
-      // Car B is attacking - B takes 15%, A takes 85%
+    } else if (speedB > speedA + 2) {
       damageA = baseDamage * 0.85;
       damageB = baseDamage * 0.15;
     } else {
-      // Similar speeds - split evenly
       damageA = baseDamage * 0.5;
       damageB = baseDamage * 0.5;
     }
 
-    // Side/rear hits deal more damage (reuse forwardA/forwardB from above)
+    // Side/rear hits deal more damage
     const hitAngleA = Math.abs(vec.dot(forwardA, normal));
     const hitAngleB = Math.abs(vec.dot(forwardB, normal));
 
@@ -566,7 +474,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     }
 
     if (maxPenetration > 0) {
-      // car.velocity IS accurate after velocity correction
+      // car.velocity is the single source of truth
       const speed = vec.length(car.velocity);
       const impactSpeed = Math.abs(vec.dot(car.velocity, collisionNormal));
       return {
@@ -610,7 +518,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     car.angularVelocity += clampedChange;
     car.angularVelocity *= 0.9; // Damping on wall hit
 
-    // Calculate wall damage - car.velocity IS accurate after velocity correction
+    // Calculate wall damage
     const actualImpactSpeed = Math.abs(vec.dot(car.velocity, normal));
 
     let damage = 0;

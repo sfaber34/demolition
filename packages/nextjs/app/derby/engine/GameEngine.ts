@@ -64,7 +64,6 @@ function createCar(name: string, color: string, position: Vector2D, rotation: nu
     targetId: null,
     stuckTimer: 0,
     lastPosition: { x: position.x, y: position.y },
-    prevFrameRealVelocity: { x: 0, y: 0 },
   };
 }
 
@@ -208,7 +207,6 @@ export class GameEngine {
       position: { ...car.position },
       velocity: { ...car.velocity },
       lastPosition: { ...car.lastPosition },
-      prevFrameRealVelocity: { ...car.prevFrameRealVelocity },
       input: { ...car.input },
     }));
 
