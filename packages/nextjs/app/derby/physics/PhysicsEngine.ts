@@ -419,21 +419,21 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
 
     // Angular impulse proportional to impact speed and how off-center the hit is
     // Higher multiplier = more noticeable spin from corner hits
-    const angularMultiplier = 0.012;
+    const angularMultiplier = 0.025;
     const angularImpulseA = normalizedTorqueA * impactSpeed * angularMultiplier;
     const angularImpulseB = normalizedTorqueB * impactSpeed * angularMultiplier;
 
-    // Cap max angular change per collision to prevent crazy spinning
-    const maxAngularChange = 0.15;
+    // Cap max angular change per collision
+    const maxAngularChange = 0.25;
     const clampedImpulseA = Math.max(-maxAngularChange, Math.min(maxAngularChange, angularImpulseA));
     const clampedImpulseB = Math.max(-maxAngularChange, Math.min(maxAngularChange, angularImpulseB));
 
     carA.angularVelocity += clampedImpulseA;
     carB.angularVelocity -= clampedImpulseB;
 
-    // Moderate damping - don't want infinite spinning but allow some follow-through
-    carA.angularVelocity *= 0.9;
-    carB.angularVelocity *= 0.9;
+    // Light damping - allow spin to follow through
+    carA.angularVelocity *= 0.95;
+    carB.angularVelocity *= 0.95;
 
     // Calculate damage using damageImpactSpeed
     // Based on log analysis: max car speed is ~10, typical collisions have damageImpactSpeed 8-15
