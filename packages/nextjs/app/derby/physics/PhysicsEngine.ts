@@ -40,6 +40,43 @@ export const vec = {
   }),
 };
 
+// ============ Real Velocity Utilities ============
+// SINGLE SOURCE OF TRUTH for real velocity calculations
+// All code MUST use these functions - never calculate position delta manually!
+
+/**
+ * Calculate the REAL velocity of a car based on actual position movement.
+ * This is the true velocity, not state velocity which can be high when blocked.
+ *
+ * @param car - The car to get real velocity for
+ * @param dtMs - Frame time in milliseconds (default 16ms for 60fps)
+ * @returns Real velocity vector in same units as car.velocity (0-10 range at max speed)
+ */
+export function getRealVelocity(car: CarSim, dtMs: number = 16): Vector2D {
+  const dt = dtMs / 16.67;
+  const positionDelta = vec.sub(car.position, car.lastPosition);
+  return vec.mul(positionDelta, 1 / dt);
+}
+
+/**
+ * Get the REAL speed (magnitude of real velocity).
+ *
+ * @param car - The car to get real speed for
+ * @param dtMs - Frame time in milliseconds (default 16ms for 60fps)
+ * @returns Real speed in same units as car.velocity magnitude (0-10 range at max speed)
+ */
+export function getRealSpeed(car: CarSim, dtMs: number = 16): number {
+  return vec.length(getRealVelocity(car, dtMs));
+}
+
+/**
+ * Get the STATE velocity speed (physics state, may not reflect actual movement).
+ * Use this only when you specifically need the physics state, not actual movement.
+ */
+export function getStateSpeed(car: CarSim): number {
+  return vec.length(car.velocity);
+}
+
 // ============ Physics Interface ============
 
 export interface IPhysicsEngine {
@@ -57,16 +94,17 @@ export interface IPhysicsEngine {
     collision: Collision,
     nowMs: number,
     cooldowns: CollisionCooldowns,
+    dtMs: number,
   ): { damageA: number; damageB: number };
 
   // Check for collision with arena walls
-  checkWallCollision(car: CarSim): WallCollision | null;
+  checkWallCollision(car: CarSim, dtMs: number): WallCollision | null;
 
   // Resolve a wall collision, returns damage
-  resolveWallCollision(collision: WallCollision): number;
+  resolveWallCollision(collision: WallCollision, dtMs: number): number;
 
   // Check if car is pinned against wall by another car
-  isCarPinned(car: CarSim, cars: CarSim[], wallCollision: WallCollision | null): boolean;
+  isCarPinned(car: CarSim, cars: CarSim[], wallCollision: WallCollision | null, dtMs: number): boolean;
 
   // Utility: get car corners for collision detection
   getCarCorners(car: CarSim): Vector2D[];
@@ -117,7 +155,9 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
 
     const dt = dtMs / 16.67;
     const forward = this.getCarForward(car);
-    const speed = vec.length(car.velocity);
+
+    // Use centralized real velocity calculation
+    const realSpeed = getRealSpeed(car, dtMs);
 
     // Apply throttle
     const accelForce = input.throttle * car.acceleration * car.traction;
@@ -128,8 +168,10 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       car.velocity = vec.add(car.velocity, vec.mul(forward, accelForce * dt));
     }
 
-    // Apply steering
-    const steerEffectiveness = Math.min(1.2, speed / 30) * car.cornering;
+    // Apply steering - use real speed (max achievable is ~10)
+    // Steering effectiveness scales from 0 at standstill to 1.0 at max speed
+    const MAX_REAL_SPEED = 10;
+    const steerEffectiveness = Math.min(1.0, realSpeed / MAX_REAL_SPEED) * car.cornering;
     car.angularVelocity += input.steer * 0.14 * steerEffectiveness * dt;
 
     // Clamp angular velocity
@@ -169,15 +211,16 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
 
     car.velocity = vec.add(vec.mul(forward, forwardSpeed), vec.mul(right, newLateralSpeed));
 
-    // Check for spin-out
-    // Note: Max achievable speed is ~10-15 due to friction, so threshold must be proportional
-    const speed = vec.length(car.velocity);
-    if (Math.abs(car.angularVelocity) > PHYSICS_CONFIG.spinOutThreshold && speed > 6) {
+    // Check for spin-out - use centralized real velocity calculation
+    // A car pushing against a wall has high state velocity but isn't actually spinning out
+    const realSpeed = getRealSpeed(car, dtMs);
+    if (Math.abs(car.angularVelocity) > PHYSICS_CONFIG.spinOutThreshold && realSpeed > 6) {
       car.velocity = vec.mul(car.velocity, 0.98);
     }
 
-    // Clamp velocity to max speed
-    if (speed > car.maxSpeed) {
+    // Clamp velocity to max speed (use state velocity for clamping the physics state)
+    const stateSpeed = vec.length(car.velocity);
+    if (stateSpeed > car.maxSpeed) {
       car.velocity = vec.mul(vec.normalize(car.velocity), car.maxSpeed);
     }
   }
@@ -252,6 +295,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     collision: Collision,
     nowMs: number,
     cooldowns: CollisionCooldowns,
+    dtMs: number,
   ): { damageA: number; damageB: number } {
     const { carA, carB, normal, penetration, impactSpeed, damageImpactSpeed } = collision;
 
@@ -437,14 +481,12 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       return { damageA: 0, damageB: 0 };
     }
 
-    // ACTUAL VELOCITY for damage calculations:
-    // Use position delta (actual movement) instead of state velocity (car.velocity)
+    // ACTUAL VELOCITY for damage calculations - use centralized functions
     // State velocity can be high when a car is applying throttle but not actually moving.
-    // Actual velocity = (position - lastPosition) represents TRUE movement per frame.
-    const actualVelA = vec.sub(carA.position, carA.lastPosition);
-    const actualVelB = vec.sub(carB.position, carB.lastPosition);
-    const actualSpeedA = vec.length(actualVelA);
-    const actualSpeedB = vec.length(actualVelB);
+    const actualVelA = getRealVelocity(carA, dtMs);
+    const actualVelB = getRealVelocity(carB, dtMs);
+    const actualSpeedA = getRealSpeed(carA, dtMs);
+    const actualSpeedB = getRealSpeed(carB, dtMs);
 
     // Recalculate damage impact speed using ACTUAL relative velocity, not state velocity
     const actualRelVel = vec.sub(actualVelA, actualVelB);
@@ -548,7 +590,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     return { damageA, damageB };
   }
 
-  checkWallCollision(car: CarSim): WallCollision | null {
+  checkWallCollision(car: CarSim, dtMs: number): WallCollision | null {
     if (!car.isAlive) return null;
 
     const corners = this.getCarCorners(car);
@@ -597,13 +639,15 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     }
 
     if (maxPenetration > 0) {
-      const speed = vec.length(car.velocity);
-      const impactSpeed = Math.abs(vec.dot(car.velocity, collisionNormal));
+      // Use centralized real velocity calculation
+      const realVelocity = getRealVelocity(car, dtMs);
+      const realSpeed = getRealSpeed(car, dtMs);
+      const impactSpeed = Math.abs(vec.dot(realVelocity, collisionNormal));
       return {
         car,
         normal: collisionNormal,
         penetration: maxPenetration,
-        impactSpeed: impactSpeed > 0 ? impactSpeed : speed * 0.5,
+        impactSpeed: impactSpeed > 0 ? impactSpeed : realSpeed * 0.5,
         contactPoint,
       };
     }
@@ -611,7 +655,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     return null;
   }
 
-  resolveWallCollision(collision: WallCollision): number {
+  resolveWallCollision(collision: WallCollision, dtMs: number): number {
     const { car, normal, penetration, impactSpeed } = collision;
 
     // Push car away from wall
@@ -622,7 +666,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     // For low-speed "pushing into the wall" contacts, bouncing each frame causes visible jitter and can
     // prevent controllers from detecting stable wall contact. So we make low-speed contacts inelastic
     // (remove the normal component), and only allow bounce for genuinely high-speed impacts.
-    // Note: Max achievable speed is ~10-15, so threshold must be proportional
+    // Note: Max achievable speed is ~10, so threshold must be proportional
     const velAlongNormal = vec.dot(car.velocity, normal);
     if (velAlongNormal < 0) {
       const BOUNCE_SPEED_THRESHOLD = 6;
@@ -640,10 +684,9 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     car.angularVelocity += clampedChange;
     car.angularVelocity *= 0.9; // Damping on wall hit
 
-    // Calculate wall damage using ACTUAL movement, not state velocity!
-    // State velocity can be high when pushing into wall, but actual movement is near zero.
-    const actualVel = vec.sub(car.position, car.lastPosition);
-    const actualImpactSpeed = Math.abs(vec.dot(actualVel, normal));
+    // Calculate wall damage using centralized real velocity
+    const realVelocity = getRealVelocity(car, dtMs);
+    const actualImpactSpeed = Math.abs(vec.dot(realVelocity, normal));
 
     let damage = 0;
     if (actualImpactSpeed > CAR_CONFIG.minDamageSpeed * 0.5) {
@@ -653,23 +696,21 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     return damage;
   }
 
-  isCarPinned(car: CarSim, cars: CarSim[], wallCollision: WallCollision | null): boolean {
+  isCarPinned(car: CarSim, cars: CarSim[], wallCollision: WallCollision | null, dtMs: number): boolean {
     if (!wallCollision) return false;
 
-    // Use ACTUAL movement speed, not state velocity
-    // A car pressing into a wall has high state velocity but low actual movement
-    const actualMovement = vec.distance(car.position, car.lastPosition);
-    if (actualMovement > 3) return false; // Car is actually moving, not pinned
+    // Use centralized real velocity functions
+    const realSpeed = getRealSpeed(car, dtMs);
+    if (realSpeed > 3) return false; // Car is actually moving, not pinned
 
     for (const other of cars) {
       if (other.id === car.id || !other.isAlive) continue;
       const dist = vec.distance(car.position, other.position);
       if (dist < car.width + other.width) {
-        // Check if other car is actually moving towards this car (using actual movement)
-        const otherActualVel = vec.sub(other.position, other.lastPosition);
+        // Check if other car is actually moving towards this car
+        const otherRealVelocity = getRealVelocity(other, dtMs);
         const towardsCar = vec.normalize(vec.sub(car.position, other.position));
-        const pushingTowards = vec.dot(otherActualVel, towardsCar);
-        // Lower threshold since actual movement is smaller than state velocity
+        const pushingTowards = vec.dot(otherRealVelocity, towardsCar);
         if (pushingTowards > 2) {
           return true;
         }

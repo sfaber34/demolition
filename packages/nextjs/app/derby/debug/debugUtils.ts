@@ -1,7 +1,12 @@
 // Debug utilities for calculating real game values
-// These functions use the same calculations as the game engine
+// These functions use the SAME centralized functions as the game engine
 // to ensure debug displays show accurate values.
-import { vec } from "../physics/PhysicsEngine";
+import {
+  getRealSpeed as physicsGetRealSpeed,
+  getRealVelocity as physicsGetRealVelocity,
+  getStateSpeed as physicsGetStateSpeed,
+  vec,
+} from "../physics/PhysicsEngine";
 import { ARENA_CONFIG, CarSim } from "../sim/typesSim";
 
 // Arena inner bounds (same as physics engine uses)
@@ -62,42 +67,50 @@ export function getWallDistColor(dist: number): string {
 
 /**
  * Get the REAL velocity of a car based on actual position movement.
- * This is the true velocity, not the state velocity which can be high
- * when a car is pushing against something but not actually moving.
+ * This wraps the centralized physics engine function.
+ *
+ * @param car - The car to get real velocity for
+ * @param dtMs - Frame time in ms (default 16 for 60fps) - MUST match physics engine
+ * @returns Real velocity in same units as car.velocity (0-10 range at max speed)
  */
-export function getRealVelocity(car: CarSim): { x: number; y: number } {
-  return {
-    x: car.position.x - car.lastPosition.x,
-    y: car.position.y - car.lastPosition.y,
-  };
+export function getRealVelocity(car: CarSim, dtMs: number = 16): { x: number; y: number } {
+  return physicsGetRealVelocity(car, dtMs);
 }
 
 /**
  * Get the REAL speed (magnitude of real velocity).
+ * This wraps the centralized physics engine function.
+ *
+ * @param car - The car to get real speed for
+ * @param dtMs - Frame time in ms (default 16 for 60fps) - MUST match physics engine
+ * @returns Real speed in same units as car.velocity magnitude (0-10 range at max speed)
  */
-export function getRealSpeed(car: CarSim): number {
-  const realVel = getRealVelocity(car);
-  return Math.sqrt(realVel.x * realVel.x + realVel.y * realVel.y);
+export function getRealSpeed(car: CarSim, dtMs: number = 16): number {
+  return physicsGetRealSpeed(car, dtMs);
 }
 
 /**
  * Get the state velocity speed (physics state, may not reflect actual movement).
+ * This wraps the centralized physics engine function.
  */
 export function getStateSpeed(car: CarSim): number {
-  return vec.length(car.velocity);
+  return physicsGetStateSpeed(car);
 }
 
 /**
  * Get color for speed display.
+ * Both real speed and state speed are now in the same scale (0-10 range at max).
  */
 export function getSpeedColor(speed: number, isRealSpeed: boolean = true): string {
-  // Real speed is per-frame movement, so values are smaller
+  // Both real and state speed use same scale (max ~10)
+  // Real speed may be lower when blocked, state speed may be higher when pushing
   if (isRealSpeed) {
-    if (speed > 5) return "#44ff44"; // Fast - green
-    if (speed > 2) return "#ffff44"; // Medium - yellow
+    // Real speed - actual movement, typically 0-10
+    if (speed > 6) return "#44ff44"; // Fast - green
+    if (speed > 3) return "#ffff44"; // Medium - yellow
     return "#aaaaaa"; // Slow - gray
   } else {
-    // State speed - max achievable is ~10-15 due to friction physics
+    // State speed - physics state, max achievable is ~10
     if (speed > 8) return "#44ff44"; // Fast - green
     if (speed > 4) return "#ffff44"; // Medium - yellow
     return "#aaaaaa"; // Slow - gray

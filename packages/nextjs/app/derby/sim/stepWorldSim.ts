@@ -13,7 +13,7 @@
 // - Resolve wall collisions
 // - Apply damage and deaths
 // - Emit lightweight SimEvents for the effects layer
-import { physicsEngine, vec } from "../physics/PhysicsEngine";
+import { getRealSpeed, physicsEngine } from "../physics/PhysicsEngine";
 import {
   CAR_CONFIG,
   CarDeathEvent,
@@ -54,10 +54,9 @@ export function stepWorldSim(world: WorldSim, dtMs: number): SimEvent[] {
     physicsEngine.integrateCar(car, dtMs);
 
     // Check for tire mark emission (high speed + turning)
-    // Use actual movement speed, not state velocity
-    const actualSpeed = vec.distance(car.position, car.lastPosition);
-    // Scale threshold down since actual movement per frame is smaller than state velocity
-    if (actualSpeed > 4 && Math.abs(car.angularVelocity) > 0.05) {
+    // Use centralized real speed function
+    const realSpeed = getRealSpeed(car, dtMs);
+    if (realSpeed > 4 && Math.abs(car.angularVelocity) > 0.05) {
       // Deterministic: emit based on state, not random
       // We use a simple modulo check on position for determinism
       const posHash = Math.floor(car.position.x * 0.1) + Math.floor(car.position.y * 0.1);
@@ -86,6 +85,7 @@ export function stepWorldSim(world: WorldSim, dtMs: number): SimEvent[] {
           collision,
           world.gameTime,
           world.collisionCooldowns,
+          dtMs,
         );
 
         // Apply damage
@@ -116,12 +116,12 @@ export function stepWorldSim(world: WorldSim, dtMs: number): SimEvent[] {
   for (const car of world.cars) {
     if (!car.isAlive) continue;
 
-    const wallCollision = physicsEngine.checkWallCollision(car);
+    const wallCollision = physicsEngine.checkWallCollision(car, dtMs);
     if (wallCollision) {
-      let damage = physicsEngine.resolveWallCollision(wallCollision);
+      let damage = physicsEngine.resolveWallCollision(wallCollision, dtMs);
 
       // Check if pinned against wall
-      if (physicsEngine.isCarPinned(car, world.cars, wallCollision)) {
+      if (physicsEngine.isCarPinned(car, world.cars, wallCollision, dtMs)) {
         damage *= CAR_CONFIG.pinnedDamageMultiplier;
       }
 
