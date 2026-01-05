@@ -65,6 +65,8 @@ export default function DerbyPage() {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
+      // Clean up keyboard event listeners
+      engineRef.current?.cleanup();
     };
   }, [gameLoop]);
 

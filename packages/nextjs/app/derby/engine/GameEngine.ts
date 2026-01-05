@@ -8,6 +8,7 @@
 // - Calls stepEffects to update VFX from events
 // - Provides getSnapshot() for React rendering (immutable copy)
 import type { CarController } from "../controllers/controllerTypes";
+import { KeyboardController } from "../controllers/keyboardController";
 import { NoopController } from "../controllers/noopController";
 import { EffectsState, createEmptyEffectsState } from "../effects/effectsTypes";
 import { snapshotEffects, stepEffects } from "../effects/stepEffects";
@@ -101,14 +102,19 @@ export class GameEngine {
   private effects: EffectsState;
   private fixedDtMs: number;
   private accumulator: number;
-  private controller: CarController;
+  private keyboardController: KeyboardController;
+  private noopController: CarController;
 
   constructor(fixedDtMs: number = 16) {
     this.fixedDtMs = fixedDtMs;
     this.accumulator = 0;
     this.world = this.createInitialWorld();
     this.effects = createEmptyEffectsState();
-    this.controller = new NoopController();
+    // Car 0 is player-controlled via keyboard
+    this.keyboardController = new KeyboardController(0);
+    // Cars 1-3 are controlled by NoopController (just sit there)
+    // Skip index 0 since it's player-controlled
+    this.noopController = new NoopController([0]);
   }
 
   private createInitialWorld(): WorldSim {
@@ -149,7 +155,9 @@ export class GameEngine {
 
     while (this.accumulator >= this.fixedDtMs) {
       // 1. Update controllers (sets car.input)
-      this.controller.update(this.world, this.fixedDtMs, this.world.gameTime);
+      // Keyboard controller handles car 0, NoopController handles the rest
+      this.keyboardController.update(this.world, this.fixedDtMs, this.world.gameTime);
+      this.noopController.update(this.world, this.fixedDtMs, this.world.gameTime);
 
       // 2. Step simulation (applies inputs, physics, collisions)
       const events = stepWorldSim(this.world, this.fixedDtMs);
@@ -194,6 +202,11 @@ export class GameEngine {
   /** Get the fixed timestep in ms */
   getFixedDtMs(): number {
     return this.fixedDtMs;
+  }
+
+  /** Clean up resources (event listeners, etc.) */
+  cleanup(): void {
+    this.keyboardController.cleanup();
   }
 }
 
