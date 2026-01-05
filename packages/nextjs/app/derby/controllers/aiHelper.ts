@@ -8,7 +8,7 @@ import { CarSim } from "../sim/typesSim";
  * All computed values are cached for the frame - call aiView() once per car per frame.
  */
 export interface AICarView {
-  // The underlying car
+  // The underlying car (for advanced access)
   car: CarSim;
 
   // Identity
@@ -25,6 +25,12 @@ export interface AICarView {
   // Direction vectors
   forward: Vector2D;
   right: Vector2D;
+
+  // Car stats (affect physics behavior)
+  acceleration: number; // How fast the car accelerates
+  maxSpeed: number; // Top speed limit
+  cornering: number; // Steering responsiveness at speed
+  traction: number; // Grip - affects accel, turn rate, and slip
 
   // State
   health: number;
@@ -72,6 +78,12 @@ export function aiView(car: CarSim): AICarView {
 
     forward,
     right,
+
+    // Car stats - exposed for AI decision making
+    acceleration: car.acceleration,
+    maxSpeed: car.maxSpeed,
+    cornering: car.cornering,
+    traction: car.traction,
 
     health: car.health,
     healthPercent: car.health / car.maxHealth,
