@@ -3,7 +3,15 @@
 import React from "react";
 import { CarSim } from "../sim/typesSim";
 import { DEBUG_CONFIG } from "./debugConfig";
-import { getRealSpeed, getSpeedColor, getStateSpeed, getWallDistColor, getWallDistance } from "./debugUtils";
+import {
+  getCarForward,
+  getRealSpeed,
+  getRealVelocity,
+  getSpeedColor,
+  getStateSpeed,
+  getWallDistColor,
+  getWallDistance,
+} from "./debugUtils";
 
 interface DebugOverlayProps {
   cars: CarSim[];
@@ -13,7 +21,7 @@ interface DebugOverlayProps {
  * Debug overlay for a single car (rendered in SVG on the arena)
  */
 const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
-  const { position, velocity, rotation } = car;
+  const { position, velocity } = car;
 
   // Build array of text lines to display
   const lines: { text: string; color: string }[] = [];
@@ -54,9 +62,11 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
   // Starting Y offset above car
   const textStartY = -car.height / 2 - 8 - lines.length * 12;
 
-  // Calculate real speed for velocity vector display
+  // Calculate physics values using centralized functions
   const realSpeed = getRealSpeed(car);
   const stateSpeed = getStateSpeed(car);
+  const realVel = getRealVelocity(car);
+  const forward = getCarForward(car);
 
   return (
     <g transform={`translate(${position.x}, ${position.y})`}>
@@ -93,26 +103,26 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
         />
       )}
 
-      {/* Real velocity vector - shows actual movement (green, smaller scale) */}
+      {/* Real velocity vector - shows actual movement (green, scaled for visibility) */}
       {DEBUG_CONFIG.showVelocityVector && realSpeed > 0.5 && (
         <line
           x1={0}
           y1={0}
-          x2={(car.position.x - car.lastPosition.x) * 8}
-          y2={(car.position.y - car.lastPosition.y) * 8}
+          x2={realVel.x * 3}
+          y2={realVel.y * 3}
           stroke="#00ff00"
           strokeWidth={3}
           markerEnd="url(#arrowhead-green)"
         />
       )}
 
-      {/* Forward direction arrow */}
+      {/* Forward direction arrow - uses centralized getCarForward */}
       {DEBUG_CONFIG.showForwardVector && (
         <line
           x1={0}
           y1={0}
-          x2={Math.cos(rotation) * 40}
-          y2={Math.sin(rotation) * 40}
+          x2={forward.x * 40}
+          y2={forward.y * 40}
           stroke="#ff00ff"
           strokeWidth={2}
           strokeDasharray="4,4"

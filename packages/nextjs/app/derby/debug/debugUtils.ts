@@ -1,57 +1,46 @@
 // Debug utilities for calculating real game values
-// These functions use the SAME centralized functions as the game engine
-// to ensure debug displays show accurate values.
+// These functions wrap the CENTRALIZED physics engine functions
+// to ensure debug displays show EXACTLY the same values as the game uses.
 import {
+  type Vector2D,
+  getCarCorners as physicsGetCarCorners,
+  getCarForward as physicsGetCarForward,
+  getCarRear as physicsGetCarRear,
+  getCarRight as physicsGetCarRight,
+  getCarWallDistance as physicsGetCarWallDistance,
   getRealSpeed as physicsGetRealSpeed,
   getRealVelocity as physicsGetRealVelocity,
   getStateSpeed as physicsGetStateSpeed,
-  vec,
 } from "../physics/PhysicsEngine";
-import { ARENA_CONFIG, CarSim } from "../sim/typesSim";
+import { CarSim } from "../sim/typesSim";
 
-// Arena inner bounds (same as physics engine uses)
-const innerLeft = ARENA_CONFIG.wallThickness;
-const innerRight = ARENA_CONFIG.width - ARENA_CONFIG.wallThickness;
-const innerTop = ARENA_CONFIG.wallThickness;
-const innerBottom = ARENA_CONFIG.height - ARENA_CONFIG.wallThickness;
+// ============ Car Geometry (wrappers around physics engine) ============
 
-/**
- * Get the 4 corners of a car given its center position, rotation, and dimensions.
- * Uses same calculation as physics engine.
- */
-export function getCarCorners(car: CarSim): { x: number; y: number }[] {
-  const halfW = car.width / 2;
-  const halfH = car.height / 2;
-  const corners = [
-    { x: halfW, y: -halfH }, // front-right
-    { x: halfW, y: halfH }, // front-left
-    { x: -halfW, y: halfH }, // back-left
-    { x: -halfW, y: -halfH }, // back-right
-  ];
-  return corners.map(c => vec.add(car.position, vec.rotate(c, car.rotation)));
+/** Get the 4 corners of a car - wraps physics engine function */
+export function getCarCorners(car: CarSim): Vector2D[] {
+  return physicsGetCarCorners(car);
 }
 
-/**
- * Distance from a single point to the nearest wall.
- */
-function pointToWallDist(px: number, py: number): number {
-  const dx = Math.min(px - innerLeft, innerRight - px);
-  const dy = Math.min(py - innerTop, innerBottom - py);
-  return Math.min(dx, dy);
+/** Get car's forward direction vector - wraps physics engine function */
+export function getCarForward(car: CarSim): Vector2D {
+  return physicsGetCarForward(car);
 }
 
-/**
- * Calculate distance from a car's nearest CORNER to the nearest wall.
- * This matches how the physics engine does wall collision detection.
- */
+/** Get car's right direction vector - wraps physics engine function */
+export function getCarRight(car: CarSim): Vector2D {
+  return physicsGetCarRight(car);
+}
+
+/** Get rear center position of car - wraps physics engine function */
+export function getCarRear(car: CarSim): Vector2D {
+  return physicsGetCarRear(car);
+}
+
+// ============ Wall Distance (wrapper around physics engine) ============
+
+/** Get distance from car to nearest wall - wraps physics engine function */
 export function getWallDistance(car: CarSim): number {
-  const corners = getCarCorners(car);
-  let minDist = Infinity;
-  for (const corner of corners) {
-    const d = pointToWallDist(corner.x, corner.y);
-    if (d < minDist) minDist = d;
-  }
-  return minDist;
+  return physicsGetCarWallDistance(car);
 }
 
 /**

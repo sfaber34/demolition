@@ -13,6 +13,9 @@ import {
 } from "../sim/typesSim";
 import { CarSnapshot, debugLog } from "../utils/debugLog";
 
+// Re-export Vector2D for convenience
+export type { Vector2D };
+
 // ============ Vector Utilities ============
 
 export const vec = {
@@ -781,8 +784,9 @@ export const physicsEngine: IPhysicsEngine = new DefaultPhysicsEngine();
 // Also export the class for testing or subclassing
 export { DefaultPhysicsEngine };
 
-// ============ Standalone Utilities ============
-// Convenience exports for use by AI controllers and other modules
+// ============ Standalone Car Physics Utilities ============
+// SINGLE SOURCE OF TRUTH for all car physics calculations
+// All code MUST use these functions - never calculate car geometry manually!
 
 /** Get car's forward direction vector from its rotation */
 export function getCarForward(car: CarSim): Vector2D {
@@ -792,4 +796,64 @@ export function getCarForward(car: CarSim): Vector2D {
 /** Get car's right direction vector from its rotation */
 export function getCarRight(car: CarSim): Vector2D {
   return vec.fromAngle(car.rotation + Math.PI / 2);
+}
+
+/**
+ * Get the 4 corners of a car in world coordinates.
+ * Order: front-right, front-left, back-left, back-right
+ */
+export function getCarCorners(car: CarSim): Vector2D[] {
+  const halfW = car.width / 2;
+  const halfH = car.height / 2;
+  const localCorners = [
+    { x: halfW, y: -halfH }, // front-right
+    { x: halfW, y: halfH }, // front-left
+    { x: -halfW, y: halfH }, // back-left
+    { x: -halfW, y: -halfH }, // back-right
+  ];
+  return localCorners.map(c => vec.add(car.position, vec.rotate(c, car.rotation)));
+}
+
+/** Get the front center position of a car */
+export function getCarFront(car: CarSim): Vector2D {
+  const forward = getCarForward(car);
+  return vec.add(car.position, vec.mul(forward, car.width / 2));
+}
+
+/** Get the rear center position of a car */
+export function getCarRear(car: CarSim): Vector2D {
+  const forward = getCarForward(car);
+  return vec.sub(car.position, vec.mul(forward, car.width / 2));
+}
+
+// ============ Arena Bounds Utilities ============
+// SINGLE SOURCE OF TRUTH for arena collision bounds
+
+/** Inner bounds of the arena (where cars can move) */
+export const ARENA_INNER_BOUNDS = {
+  left: ARENA_CONFIG.wallThickness,
+  right: ARENA_CONFIG.width - ARENA_CONFIG.wallThickness,
+  top: ARENA_CONFIG.wallThickness,
+  bottom: ARENA_CONFIG.height - ARENA_CONFIG.wallThickness,
+};
+
+/** Distance from a point to the nearest wall (positive = inside arena) */
+export function pointToWallDistance(x: number, y: number): number {
+  const dx = Math.min(x - ARENA_INNER_BOUNDS.left, ARENA_INNER_BOUNDS.right - x);
+  const dy = Math.min(y - ARENA_INNER_BOUNDS.top, ARENA_INNER_BOUNDS.bottom - y);
+  return Math.min(dx, dy);
+}
+
+/**
+ * Get distance from a car's nearest corner to the nearest wall.
+ * This matches how wall collision detection works.
+ */
+export function getCarWallDistance(car: CarSim): number {
+  const corners = getCarCorners(car);
+  let minDist = Infinity;
+  for (const corner of corners) {
+    const d = pointToWallDistance(corner.x, corner.y);
+    if (d < minDist) minDist = d;
+  }
+  return minDist;
 }

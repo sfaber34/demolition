@@ -2,6 +2,7 @@
 
 import React from "react";
 import { DamageNumber, Explosion, SmokeParticle, Spark, TireMark } from "../effects/effectsTypes";
+import { getCarRear, getRealSpeed } from "../physics/PhysicsEngine";
 import { CarSim } from "../sim/typesSim";
 
 // Tire marks on the ground
@@ -195,20 +196,18 @@ export const CarEffects: React.FC<{ car: CarSim }> = ({ car }) => {
 export const DustCloud: React.FC<{ car: CarSim }> = ({ car }) => {
   if (!car.isAlive) return null;
 
-  // Use ACTUAL movement speed, not state velocity
-  // State velocity can be high when pushing against something but not actually moving
-  const dx = car.position.x - car.lastPosition.x;
-  const dy = car.position.y - car.lastPosition.y;
-  const actualSpeed = Math.sqrt(dx * dx + dy * dy);
-  // Threshold scaled down since actual movement per frame is smaller
-  if (actualSpeed < 2) return null;
+  // Use centralized real speed calculation
+  const realSpeed = getRealSpeed(car);
+  // Threshold based on real velocity scale (0-10 range)
+  if (realSpeed < 2) return null;
 
-  const intensity = Math.min(1, actualSpeed / 8);
+  const intensity = Math.min(1, realSpeed / 8);
   const particleCount = Math.floor(intensity * 3);
 
-  // Calculate rear position
-  const rearX = car.position.x - Math.cos(car.rotation) * (car.width / 2);
-  const rearY = car.position.y - Math.sin(car.rotation) * (car.height / 2);
+  // Use centralized rear position calculation
+  const rear = getCarRear(car);
+  const rearX = rear.x;
+  const rearY = rear.y;
 
   return (
     <g>
