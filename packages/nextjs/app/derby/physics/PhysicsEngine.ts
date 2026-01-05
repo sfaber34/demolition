@@ -11,7 +11,6 @@ import {
   Vector2D,
   WallCollision,
 } from "../sim/typesSim";
-import { CarSnapshot, debugLog } from "../utils/debugLog";
 
 // Re-export Vector2D for convenience
 export type { Vector2D };
@@ -458,43 +457,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     // Cleanup old cooldowns periodically (sim-time, deterministic)
     cleanupCooldowns(nowMs, cooldowns);
 
-    // Helper to create car snapshot
-    const makeSnapshot = (car: CarSim, speed: number): CarSnapshot => ({
-      id: car.id,
-      name: car.name,
-      position: { x: car.position.x, y: car.position.y },
-      velocity: { x: car.velocity.x, y: car.velocity.y },
-      speed,
-      rotation: (car.rotation * 180) / Math.PI,
-      rotationRad: car.rotation,
-      angularVelocity: car.angularVelocity,
-      health: car.health,
-      isAlive: car.isAlive,
-    });
-
-    const relVelForLog = vec.sub(carA.velocity, carB.velocity);
-
     if (damageImpactSpeed < MIN_DAMAGE_SPEED) {
-      // Log filtered collision with full detail
-      debugLog.log({
-        timestamp: nowMs,
-        gameTimeMs: nowMs,
-        type: "car_collision",
-        carA: makeSnapshot(carA, stateSpeedA),
-        carB: makeSnapshot(carB, stateSpeedB),
-        contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
-        collisionNormal: { x: normal.x, y: normal.y },
-        penetration,
-        relativeVelocity: { x: relVelForLog.x, y: relVelForLog.y },
-        relativeImpact: collision.damageImpactSpeed,
-        combinedSpeed: impactSpeed,
-        damageImpactSpeed,
-        damageA: 0,
-        damageB: 0,
-        totalDamage: 0,
-        wasFiltered: true,
-        filterReason: `damageImpactSpeed ${damageImpactSpeed.toFixed(1)} < ${MIN_DAMAGE_SPEED}`,
-      });
       return { damageA: 0, damageB: 0 };
     }
 
@@ -507,25 +470,6 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     const movementB = vec.distance(carB.position, carB.lastPosition);
     const maxMovement = Math.max(movementA, movementB);
     if (maxMovement < MIN_MOVEMENT_FOR_DAMAGE) {
-      debugLog.log({
-        timestamp: nowMs,
-        gameTimeMs: nowMs,
-        type: "car_collision",
-        carA: makeSnapshot(carA, stateSpeedA),
-        carB: makeSnapshot(carB, stateSpeedB),
-        contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
-        collisionNormal: { x: normal.x, y: normal.y },
-        penetration,
-        relativeVelocity: { x: relVelForLog.x, y: relVelForLog.y },
-        relativeImpact: collision.damageImpactSpeed,
-        combinedSpeed: impactSpeed,
-        damageImpactSpeed,
-        damageA: 0,
-        damageB: 0,
-        totalDamage: 0,
-        wasFiltered: true,
-        filterReason: `stalemate - no movement (maxMovement ${maxMovement.toFixed(1)} < ${MIN_MOVEMENT_FOR_DAMAGE})`,
-      });
       return { damageA: 0, damageB: 0 };
     }
 
@@ -540,25 +484,6 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
 
     // Check collision cooldown - prevents grinding damage from repeated collisions
     if (!canDealDamage(carA.id, carB.id, nowMs, cooldowns)) {
-      debugLog.log({
-        timestamp: nowMs,
-        gameTimeMs: nowMs,
-        type: "car_collision",
-        carA: makeSnapshot(carA, stateSpeedA),
-        carB: makeSnapshot(carB, stateSpeedB),
-        contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
-        collisionNormal: { x: normal.x, y: normal.y },
-        penetration,
-        relativeVelocity: { x: relVelForLog.x, y: relVelForLog.y },
-        relativeImpact: collision.damageImpactSpeed,
-        combinedSpeed: impactSpeed,
-        damageImpactSpeed,
-        damageA: 0,
-        damageB: 0,
-        totalDamage: 0,
-        wasFiltered: true,
-        filterReason: `collision cooldown active`,
-      });
       return { damageA: 0, damageB: 0 };
     }
 
@@ -604,30 +529,6 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
 
     // Record collision for cooldown tracking
     recordCollision(carA.id, carB.id, nowMs, cooldowns);
-
-    // Log collision with damage - full detail
-    debugLog.log({
-      timestamp: nowMs,
-      gameTimeMs: nowMs,
-      type: "car_collision",
-      carA: makeSnapshot(carA, stateSpeedA),
-      carB: makeSnapshot(carB, stateSpeedB),
-      contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
-      collisionNormal: { x: normal.x, y: normal.y },
-      penetration,
-      relativeVelocity: { x: relVelForLog.x, y: relVelForLog.y },
-      relativeImpact: collision.damageImpactSpeed,
-      combinedSpeed: impactSpeed,
-      damageImpactSpeed,
-      // Actual movement-based values used for damage
-      actualSpeedA,
-      actualSpeedB,
-      actualDamageImpactSpeed,
-      damageA,
-      damageB,
-      totalDamage: damageA + damageB,
-      wasFiltered: false,
-    });
 
     return { damageA, damageB };
   }
