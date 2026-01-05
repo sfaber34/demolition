@@ -399,6 +399,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     // ============ ANGULAR IMPULSE (TORQUE) ============
     // Off-center hits cause rotation. Torque = r × F
     // Hit center → no spin. Hit corner → spin.
+    // IMPORTANT: Stationary/slow cars should spin MORE than fast moving cars
     const forwardA = this.getCarForward(carA);
     const forwardB = this.getCarForward(carB);
 
@@ -417,14 +418,28 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     const normalizedTorqueA = torqueArmA / halfWidthA;
     const normalizedTorqueB = torqueArmB / halfWidthB;
 
-    // Angular impulse proportional to impact speed and how off-center the hit is
-    // Higher multiplier = more noticeable spin from corner hits
-    const angularMultiplier = 0.025;
-    const angularImpulseA = normalizedTorqueA * impactSpeed * angularMultiplier;
-    const angularImpulseB = normalizedTorqueB * impactSpeed * angularMultiplier;
+    // Base angular impulse from the collision
+    const baseAngularMultiplier = 0.015; // Halved from 0.03
+    const baseImpulse = impactSpeed * baseAngularMultiplier;
+
+    // Speed-based angular resistance: faster cars resist spinning more
+    // A stationary car (speed=0) gets full spin, a fast car (speed=10) gets less
+    const maxSpeed = 10;
+    const resistanceA = 0.55 + (stateSpeedA / maxSpeed) * 0.45; // 0.55 to 1.0
+    const resistanceB = 0.55 + (stateSpeedB / maxSpeed) * 0.45; // 0.55 to 1.0
+
+    // Inverse resistance = how much spin they receive
+    // Stationary car: resistance=0.55, receives ~1.8x multiplier
+    // Fast car: resistance=1.0, receives 1x multiplier
+    const spinMultiplierA = 1 / resistanceA;
+    const spinMultiplierB = 1 / resistanceB;
+
+    // Apply torque with speed-based scaling
+    const angularImpulseA = normalizedTorqueA * baseImpulse * spinMultiplierA;
+    const angularImpulseB = normalizedTorqueB * baseImpulse * spinMultiplierB;
 
     // Cap max angular change per collision
-    const maxAngularChange = 0.25;
+    const maxAngularChange = 0.35; // Halved from 0.35
     const clampedImpulseA = Math.max(-maxAngularChange, Math.min(maxAngularChange, angularImpulseA));
     const clampedImpulseB = Math.max(-maxAngularChange, Math.min(maxAngularChange, angularImpulseB));
 
