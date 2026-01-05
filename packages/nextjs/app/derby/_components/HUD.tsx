@@ -35,11 +35,27 @@ interface CarStatusProps {
 function getDebugDisplay(car: CarSim, debugValue: HudDebugValue): { label: string; value: string; color: string } {
   switch (debugValue) {
     case "wallDistance": {
-      const dist = getCarWallDistance(car);
+      const front = car.aiDebug?.frontWallDist;
+      const rear = car.aiDebug?.rearWallDist;
+      const mode = car.aiDebug?.recoverMode ?? null;
+
+      // If AI hasn't populated aiDebug yet, fall back to standard wall distance.
+      if (front === undefined || rear === undefined) {
+        const dist = getCarWallDistance(car);
+        return {
+          label: "WALL:",
+          value: Math.round(dist).toString(),
+          color: getWallDistColor(dist),
+        };
+      }
+
+      const minDist = Math.min(front, rear);
+      const f = Math.max(0, Math.round(front));
+      const r = Math.max(0, Math.round(rear));
       return {
-        label: "WALL:",
-        value: Math.round(dist).toString(),
-        color: getWallDistColor(dist),
+        label: "",
+        value: `F:${f}\nR:${r}\nM:${mode ?? "-"}`,
+        color: getWallDistColor(minDist),
       };
     }
     case "speed": {
@@ -123,14 +139,17 @@ const CarStatus: React.FC<CarStatusProps> = memo(({ car, isActive }) => {
             <span className="text-xs" style={{ color: display.color || "#fb923c" }}>
               {display.label}
             </span>
-            <span className="text-sm font-bold font-mono" style={{ color: display.color || "#fdba74" }}>
+            <span
+              className="text-sm font-bold font-mono whitespace-pre-line"
+              style={{ color: display.color || "#fdba74" }}
+            >
               {display.value}
             </span>
           </>
         ) : (
           <>
             <span className="text-xs text-orange-400">{display.label}</span>
-            <span className="text-sm font-bold text-orange-300 font-mono">{display.value}</span>
+            <span className="text-sm font-bold text-orange-300 font-mono whitespace-pre-line">{display.value}</span>
           </>
         )}
       </div>

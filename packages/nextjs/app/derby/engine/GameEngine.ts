@@ -66,6 +66,7 @@ function createCar(name: string, color: string, position: Vector2D, rotation: nu
     targetId: null,
     stuckTimer: 0,
     lastPosition: { x: position.x, y: position.y },
+    aiDebug: {},
   };
 }
 

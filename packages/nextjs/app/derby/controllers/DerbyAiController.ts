@@ -16,6 +16,8 @@ interface CarMemory {
   evadeUntilMs: number;
   wallAvoidUntilMs: number;
   recoverUntilMs: number;
+  recoverMode: "front" | "rear" | null;
+  recoverWallNormal: Vector2D | null;
 
   // Wander target
   waypoint: Vector2D | null;
@@ -115,6 +117,62 @@ function getNearestWallNormalForCar(car: CarSim): Vector2D {
   return bestNormal;
 }
 
+function pointToWallDistanceAndNormal(p: Vector2D): { dist: number; normal: Vector2D } {
+  // Matches PhysicsEngine.pointToWallDistance() (internal), using inner wall bounds.
+  const left = ARENA_CONFIG.wallThickness;
+  const right = ARENA_CONFIG.width - ARENA_CONFIG.wallThickness;
+  const top = ARENA_CONFIG.wallThickness;
+  const bottom = ARENA_CONFIG.height - ARENA_CONFIG.wallThickness;
+
+  const dLeft = p.x - left;
+  const dRight = right - p.x;
+  const dTop = p.y - top;
+  const dBottom = bottom - p.y;
+
+  let dist = dLeft;
+  let normal: Vector2D = { x: 1, y: 0 };
+
+  if (dRight < dist) {
+    dist = dRight;
+    normal = { x: -1, y: 0 };
+  }
+  if (dTop < dist) {
+    dist = dTop;
+    normal = { x: 0, y: 1 };
+  }
+  if (dBottom < dist) {
+    dist = dBottom;
+    normal = { x: 0, y: -1 };
+  }
+
+  return { dist, normal };
+}
+
+function getFrontBackWallContact(car: CarSim): {
+  front: { dist: number; normal: Vector2D };
+  rear: { dist: number; normal: Vector2D };
+} {
+  // getCarCorners() exported order (PhysicsEngine.ts):
+  // [0]=front-right, [1]=front-left, [2]=back-left, [3]=back-right
+  const corners = getCarCorners(car);
+  const frontCorners = [corners[0], corners[1]];
+  const rearCorners = [corners[2], corners[3]];
+
+  let bestFront = { dist: Infinity, normal: { x: 0, y: 0 } as Vector2D };
+  for (const c of frontCorners) {
+    const r = pointToWallDistanceAndNormal(c);
+    if (r.dist < bestFront.dist) bestFront = r;
+  }
+
+  let bestRear = { dist: Infinity, normal: { x: 0, y: 0 } as Vector2D };
+  for (const c of rearCorners) {
+    const r = pointToWallDistanceAndNormal(c);
+    if (r.dist < bestRear.dist) bestRear = r;
+  }
+
+  return { front: bestFront, rear: bestRear };
+}
+
 export class DerbyAiController implements CarController {
   private controlledCars: ControlledCars;
   private memoryByCarId: Map<string, CarMemory> = new Map();
@@ -139,6 +197,8 @@ export class DerbyAiController implements CarController {
       evadeUntilMs: 0,
       wallAvoidUntilMs: 0,
       recoverUntilMs: 0,
+      recoverMode: null,
+      recoverWallNormal: null,
       waypoint: null,
       nextWaypointAtMs: 0,
       lastPos: null,
@@ -164,6 +224,7 @@ export class DerbyAiController implements CarController {
 
       const me = aiView(car);
       const mem = this.getMemory(car);
+      const contact = getFrontBackWallContact(car);
 
       // --- Controller-side stuck detection ---
       if (mem.lastPos) {
@@ -183,21 +244,39 @@ export class DerbyAiController implements CarController {
       }
 
       // --- Wall "head-on" detection: close + pointing into the wall ---
-      // If we're close and our forward vector points OUT of the arena (into wall),
-      // do a short reverse+turn to get unstuck.
-      if (me.wallDistance < 24) {
-        const wallNormal = getNearestWallNormalForCar(car);
-        const facingIntoWall = vec.dot(me.forward, wallNormal) < -0.35;
-        const lowSpeed = me.speed < 2.2;
-        if (facingIntoWall && (lowSpeed || mem.stuckForMs > 200)) {
+      // If we're very close and either our nose is into the wall OR our tail is into the wall,
+      // trigger an escape maneuver. Which direction we apply throttle depends on whether the
+      // car is facing toward the arena interior or not.
+      if (me.wallDistance < 22) {
+        const lowSpeed = me.speed < 2.4;
+        if ((contact.front.dist < 14 || contact.rear.dist < 14) && (lowSpeed || mem.stuckForMs > 160)) {
+          // Always refresh which end is pinned based on actual corner distances.
+          // Otherwise we can stay stuck in a wrong mode (e.g. "front") while the rear is touching.
+          const rearIsCloser = contact.rear.dist + 0.25 < contact.front.dist;
+          mem.recoverMode = rearIsCloser ? "rear" : "front";
+          mem.recoverWallNormal = rearIsCloser ? contact.rear.normal : contact.front.normal;
           mem.recoverUntilMs = Math.max(mem.recoverUntilMs, nowMs + 520);
           mem.wallAvoidUntilMs = Math.max(mem.wallAvoidUntilMs, nowMs + 520);
         }
       }
 
+      // Ultra-close contact case (wallDistance ~0-2): cars can "jitter" in place and never
+      // accumulate stuck time. If we're basically touching a wall, force an escape quickly.
+      if (me.wallDistance < 3 && me.speed < 4) {
+        // Ultra-close jitter case: always refresh end selection even mid-recovery.
+        const rearIsCloser = contact.rear.dist + 0.25 < contact.front.dist;
+        mem.recoverMode = rearIsCloser ? "rear" : "front";
+        mem.recoverWallNormal = rearIsCloser ? contact.rear.normal : contact.front.normal;
+        mem.recoverUntilMs = Math.max(mem.recoverUntilMs, nowMs + 420);
+        mem.wallAvoidUntilMs = Math.max(mem.wallAvoidUntilMs, nowMs + 420);
+      }
+
       // --- Recover if pinned/stuck near wall ---
       const isStuckNearWall = mem.stuckForMs > 500 && me.wallDistance < 35;
       if (isStuckNearWall) {
+        const rearIsCloser = contact.rear.dist + 0.25 < contact.front.dist;
+        mem.recoverMode = rearIsCloser ? "rear" : "front";
+        mem.recoverWallNormal = rearIsCloser ? contact.rear.normal : contact.front.normal;
         mem.recoverUntilMs = Math.max(mem.recoverUntilMs, nowMs + 450);
         mem.wallAvoidUntilMs = Math.max(mem.wallAvoidUntilMs, nowMs + 450);
       }
@@ -239,18 +318,26 @@ export class DerbyAiController implements CarController {
       // 1) Recovery should override wall-avoid; wall-avoid is not enough when steer effectiveness is ~0 at low speed.
       if (mem.recoverUntilMs > nowMs) {
         chosenBehavior = "repositioning";
-        // Short scripted unstick: reverse while turning, then surge forward.
-        const phase = mem.recoverUntilMs - nowMs > 220 ? "reverse" : "forward";
-        // Prefer turning "away" from nearest wall so we don't reverse into a corner.
-        const wallNormal = getNearestWallNormalForCar(car);
-        const side = vec.dot(me.right, wallNormal); // + => wallNormal is to our right (turn left)
-        const preferredTurnDir = side > 0 ? -1 : 1;
-        const jitter = stableRand01(`${car.id}:recover`) > 0.5 ? 1 : -1;
-        const turnDir = preferredTurnDir * jitter;
-        input = {
-          throttle: phase === "reverse" ? -1 : 1.2,
-          steer: phase === "reverse" ? turnDir : -turnDir * 0.6,
-        };
+        const wallNormal = mem.recoverWallNormal ?? getNearestWallNormalForCar(car);
+        const escapeTarget = vec.add(car.position, vec.mul(wallNormal, 240));
+        const escapeAngle = me.angleToTarget(escapeTarget.x, escapeTarget.y);
+
+        if (mem.recoverMode === "rear") {
+          // Rear is pinned: just drive forward and steer away from the wall.
+          input = {
+            throttle: 1.25,
+            steer: steerTowardAngle(escapeAngle, 2.2),
+          };
+        } else {
+          // Default/front pinned: reverse while turning, then surge forward.
+          const phase = mem.recoverUntilMs - nowMs > 220 ? "reverse" : "forward";
+          input = {
+            throttle: phase === "reverse" ? -1 : 1.2,
+            // Steering affects angular velocity regardless of throttle direction.
+            // Aim to rotate toward the inward normal so our next forward acceleration escapes the wall.
+            steer: steerTowardAngle(escapeAngle, 2.2),
+          };
+        }
       } else if (mem.wallAvoidUntilMs > nowMs) {
         // 2) Wall avoidance (drive toward center with reduced throttle)
         const centerX = ARENA_CONFIG.width / 2;
@@ -332,6 +419,12 @@ export class DerbyAiController implements CarController {
       car.aiState = chosenBehavior;
       car.stateTimer += dtMs;
       car.input = clampInput(input);
+      // HUD debug: expose front/rear wall distances and current recovery mode.
+      car.aiDebug = {
+        frontWallDist: contact.front.dist,
+        rearWallDist: contact.rear.dist,
+        recoverMode: mem.recoverMode,
+      };
     }
   }
 }

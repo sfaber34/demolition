@@ -189,6 +189,7 @@ export function cloneWorldSim(world: WorldSim): WorldSim {
       velocity: { ...car.velocity },
       lastPosition: { ...car.lastPosition },
       input: { ...car.input },
+      aiDebug: car.aiDebug ? { ...car.aiDebug } : undefined,
     })),
     gamePhase: world.gamePhase,
     winner: world.winner ? { ...world.winner } : null,

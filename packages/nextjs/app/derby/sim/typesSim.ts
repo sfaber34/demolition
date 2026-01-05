@@ -52,6 +52,13 @@ export interface CarSim {
   targetId: string | null;
   stuckTimer: number;
   lastPosition: Vector2D; // For AI stuck detection
+
+  // Optional: AI debug info written by controllers (for HUD/debug overlays)
+  aiDebug?: {
+    frontWallDist?: number;
+    rearWallDist?: number;
+    recoverMode?: "front" | "rear" | null;
+  };
 }
 
 /** Core world simulation state */
