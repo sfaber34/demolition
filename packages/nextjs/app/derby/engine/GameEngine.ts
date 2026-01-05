@@ -98,8 +98,8 @@ function createInitialCars(): CarSim[] {
       rotation: Math.PI * 2,
     },
     {
-      pos: { x: 700, y: 325 },
-      rotation: Math.PI / 2,
+      pos: { x: 700, y: 300 },
+      rotation: Math.PI * 2,
     },
     {
       pos: { x: wallThickness + margin + 15, y: height - wallThickness - margin - 15 },

@@ -557,20 +557,15 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       return { damageA: 0, damageB: 0 };
     }
 
-    // ACTUAL VELOCITY for damage calculations - use centralized functions
-    // State velocity can be high when a car is applying throttle but not actually moving.
-    // Use corrected velocity (car.velocity IS accurate after velocity correction)
-    const actualVelA = carA.velocity;
-    const actualVelB = carB.velocity;
-    const actualSpeedA = vec.length(carA.velocity);
-    const actualSpeedB = vec.length(carB.velocity);
+    // Use PRE-COLLISION speeds for damage calculation
+    // stateSpeedA/B were captured at the start before collision resolution modified velocities
+    // damageImpactSpeed from collision object also uses pre-collision (prevFrameRealVelocity)
+    const actualSpeedA = stateSpeedA;
+    const actualSpeedB = stateSpeedB;
 
-    // Recalculate damage impact speed using ACTUAL relative velocity, not state velocity
-    const actualRelVel = vec.sub(actualVelA, actualVelB);
-    const actualVelAlongNormal = vec.dot(actualRelVel, normal);
-    // Positive = cars closing, negative = separating
-    const actualDamageImpactSpeed =
-      actualVelAlongNormal > 0 ? actualVelAlongNormal : Math.abs(actualVelAlongNormal) * 0.5;
+    // Use damageImpactSpeed from collision - it's calculated from prevFrameRealVelocity
+    // which captures actual movement before collision resolution modified anything
+    const actualDamageImpactSpeed = damageImpactSpeed;
 
     // Check collision cooldown - prevents grinding damage from repeated collisions
     if (!canDealDamage(carA.id, carB.id, nowMs, cooldowns)) {
