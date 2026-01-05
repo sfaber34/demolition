@@ -281,6 +281,12 @@ export class DerbyAiController implements CarController {
         mem.wallAvoidUntilMs = Math.max(mem.wallAvoidUntilMs, nowMs + 450);
       }
 
+      // Clear stale recovery state once the timer is over (so debug doesn't show "front/rear" forever).
+      if (mem.recoverUntilMs <= nowMs) {
+        mem.recoverMode = null;
+        mem.recoverWallNormal = null;
+      }
+
       // --- Threat detection (very simple) ---
       let threat: CarSim | null = null;
       if (effectiveMode === "auto") {
@@ -423,7 +429,7 @@ export class DerbyAiController implements CarController {
       car.aiDebug = {
         frontWallDist: contact.front.dist,
         rearWallDist: contact.rear.dist,
-        recoverMode: mem.recoverMode,
+        recoverMode: mem.recoverUntilMs > nowMs ? mem.recoverMode : null,
       };
     }
   }
