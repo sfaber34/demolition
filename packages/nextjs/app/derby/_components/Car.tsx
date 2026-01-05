@@ -7,8 +7,29 @@ interface CarProps {
   car: CarSim;
 }
 
+// Custom comparison - only re-render if visually relevant props change
+const carPropsAreEqual = (prev: CarProps, next: CarProps): boolean => {
+  const p = prev.car;
+  const n = next.car;
+  // Compare only what affects rendering
+  return (
+    p.id === n.id &&
+    p.isAlive === n.isAlive &&
+    Math.abs(p.position.x - n.position.x) < 0.1 &&
+    Math.abs(p.position.y - n.position.y) < 0.1 &&
+    Math.abs(p.rotation - n.rotation) < 0.001 &&
+    Math.abs(p.health - n.health) < 0.5
+  );
+};
+
 export const Car: React.FC<CarProps> = memo(({ car }) => {
   const { position, rotation, width, height, color, health, maxHealth, isAlive } = car;
+
+  // Pre-compute transform string
+  const transformStr = `translate(${position.x}, ${position.y}) rotate(${(rotation * 180) / Math.PI})`;
+
+  // GPU acceleration style - hints browser to use hardware acceleration
+  const gpuStyle: React.CSSProperties = { willChange: "transform" };
 
   const healthPercent = health / maxHealth;
 
@@ -112,12 +133,10 @@ export const Car: React.FC<CarProps> = memo(({ car }) => {
 
   if (!isAlive) {
     // Dead car - maximum damage appearance (deterministic)
+    // Note: removed brightness filter for performance - use darker colors instead
     const seed = car.id.charCodeAt(0) / 255;
     return (
-      <g
-        transform={`translate(${position.x}, ${position.y}) rotate(${(rotation * 180) / Math.PI})`}
-        style={{ filter: "brightness(0.5)" }}
-      >
+      <g transform={transformStr} style={gpuStyle} opacity={0.6}>
         {/* Main body - heavily damaged */}
         <rect
           x={-width / 2}
@@ -153,7 +172,7 @@ export const Car: React.FC<CarProps> = memo(({ car }) => {
   }
 
   return (
-    <g transform={`translate(${position.x}, ${position.y}) rotate(${(rotation * 180) / Math.PI})`}>
+    <g transform={transformStr} style={gpuStyle}>
       {/* Shadow */}
       <ellipse cx={2} cy={2} rx={width / 2 + 2} ry={height / 2 + 2} fill="rgba(0,0,0,0.2)" />
 
@@ -203,7 +222,7 @@ export const Car: React.FC<CarProps> = memo(({ car }) => {
       <rect x={-width / 2 + 2} y={height / 2 - 2} width={10} height={5} fill="#111" rx={1} />
     </g>
   );
-});
+}, carPropsAreEqual);
 Car.displayName = "Car";
 
 export default Car;

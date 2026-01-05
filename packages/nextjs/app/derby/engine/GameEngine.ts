@@ -24,6 +24,8 @@ export interface GameSnapshot {
   gamePhase: "title" | "playing" | "victory" | "gameover";
   winner: CarSim | null;
   gameTime: number;
+  /** Interpolation alpha (0-1) for smooth rendering between physics steps */
+  alpha: number;
 }
 
 // ============ Car Factory ============
@@ -116,6 +118,12 @@ function createInitialCars(): CarSim[] {
 
 // ============ Game Engine Class ============
 
+/** Previous state for interpolation */
+interface PreviousCarState {
+  position: Vector2D;
+  rotation: number;
+}
+
 export class GameEngine {
   private world: WorldSim;
   private effects: EffectsState;
@@ -123,6 +131,8 @@ export class GameEngine {
   private accumulator: number;
   private keyboardController: KeyboardController;
   private noopController: CarController;
+  /** Previous car states for render interpolation */
+  private previousStates: Map<string, PreviousCarState> = new Map();
 
   constructor(fixedDtMs: number = 16) {
     this.fixedDtMs = fixedDtMs;
@@ -134,6 +144,8 @@ export class GameEngine {
     // Cars 1-3 are controlled by NoopController (just sit there)
     // Skip index 0 since it's player-controlled
     this.noopController = new NoopController([0]);
+    // Initialize previous states
+    this.savePreviousStates();
   }
 
   private createInitialWorld(): WorldSim {
@@ -159,11 +171,28 @@ export class GameEngine {
     this.world.gamePhase = "playing";
     this.effects = createEmptyEffectsState();
     this.accumulator = 0;
+    this.savePreviousStates();
+  }
+
+  /** Save current car positions/rotations for interpolation */
+  private savePreviousStates(): void {
+    for (const car of this.world.cars) {
+      this.previousStates.set(car.id, {
+        position: { x: car.position.x, y: car.position.y },
+        rotation: car.rotation,
+      });
+    }
   }
 
   /**
    * Main step function - call this from the game loop with delta time.
    * Uses fixed timestep internally for determinism.
+   *
+   * Interpolation approach (from "Fix Your Timestep!"):
+   * - previousStates holds the state from ONE physics step ago
+   * - currentState (this.world) holds the latest physics state
+   * - alpha = accumulator / fixedDtMs (0 to ~1)
+   * - render = lerp(previous, current, alpha)
    */
   step(dtMs: number): void {
     // Only step during playing or victory phases
@@ -175,6 +204,10 @@ export class GameEngine {
     this.accumulator += dtMs;
 
     while (this.accumulator >= this.fixedDtMs) {
+      // Save current state as "previous" BEFORE running physics
+      // This means previousStates always holds the state from 1 physics tick ago
+      this.savePreviousStates();
+
       // During victory, step the sim (for timer) and effects (for animations)
       // but skip controller updates
       if (this.world.gamePhase === "victory") {
@@ -199,16 +232,35 @@ export class GameEngine {
     }
   }
 
-  /** Get immutable snapshot for React rendering */
+  /** Get immutable snapshot for React rendering with extrapolated positions */
   getSnapshot(): GameSnapshot {
-    // Create shallow copies of cars array with copied position/velocity
-    const carsCopy = this.world.cars.map(car => ({
-      ...car,
-      position: { ...car.position },
-      velocity: { ...car.velocity },
-      lastPosition: { ...car.lastPosition },
-      input: { ...car.input },
-    }));
+    // Calculate extrapolation factor - how much time since last physics step
+    // We use extrapolation (predict forward) instead of interpolation (look back)
+    // because it feels more responsive
+    const extrapolateMs = this.accumulator;
+    const extrapolateFactor = extrapolateMs / this.fixedDtMs;
+
+    // Create shallow copies of cars array with EXTRAPOLATED position/rotation
+    const carsCopy = this.world.cars.map(car => {
+      // Extrapolate position based on current velocity
+      // This predicts where the car WILL be at render time
+      const extrapPosition = {
+        x: car.position.x + car.velocity.x * extrapolateFactor,
+        y: car.position.y + car.velocity.y * extrapolateFactor,
+      };
+
+      // Extrapolate rotation based on angular velocity
+      const extrapRotation = car.rotation + car.angularVelocity * extrapolateFactor;
+
+      return {
+        ...car,
+        position: extrapPosition,
+        rotation: extrapRotation,
+        velocity: { ...car.velocity },
+        lastPosition: { ...car.lastPosition },
+        input: { ...car.input },
+      };
+    });
 
     return {
       cars: carsCopy,
@@ -216,6 +268,7 @@ export class GameEngine {
       gamePhase: this.world.gamePhase,
       winner: this.world.winner ? { ...this.world.winner } : null,
       gameTime: this.world.gameTime,
+      alpha: extrapolateFactor,
     };
   }
 
