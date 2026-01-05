@@ -161,6 +161,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
   integrateCar(car: CarSim, dtMs: number): void {
     if (!car.isAlive) return;
 
+    // Normalize dt to a 60fps baseline so any per-tick damping can be made time-step invariant.
     const dt = dtMs / 16.67;
 
     // Apply velocity
@@ -173,11 +174,14 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     while (car.rotation > Math.PI) car.rotation -= Math.PI * 2;
     while (car.rotation < -Math.PI) car.rotation += Math.PI * 2;
 
-    // Apply friction
-    car.velocity = vec.mul(car.velocity, PHYSICS_CONFIG.friction);
+    // Apply friction (time-step invariant)
+    // PHYSICS_CONFIG.friction is defined per ~16.67ms tick.
+    const friction = Math.pow(PHYSICS_CONFIG.friction, dt);
+    car.velocity = vec.mul(car.velocity, friction);
 
-    // Apply angular friction
-    car.angularVelocity *= PHYSICS_CONFIG.angularFriction;
+    // Apply angular friction (time-step invariant)
+    const angularFriction = Math.pow(PHYSICS_CONFIG.angularFriction, dt);
+    car.angularVelocity *= angularFriction;
 
     // Lateral friction
     const forward = this.getCarForward(car);
@@ -185,7 +189,9 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     const forwardSpeed = vec.dot(car.velocity, forward);
     const lateralSpeed = vec.dot(car.velocity, right);
 
-    const lateralFriction = 0.85 - car.traction * 0.1;
+    // Lateral friction (time-step invariant)
+    const lateralFrictionBase = 0.85 - car.traction * 0.1;
+    const lateralFriction = Math.pow(lateralFrictionBase, dt);
     const newLateralSpeed = lateralSpeed * lateralFriction;
 
     car.velocity = vec.add(vec.mul(forward, forwardSpeed), vec.mul(right, newLateralSpeed));

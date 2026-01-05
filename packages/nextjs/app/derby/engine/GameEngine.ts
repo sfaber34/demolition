@@ -134,7 +134,9 @@ export class GameEngine {
   /** Previous car states for render interpolation */
   private previousStates: Map<string, PreviousCarState> = new Map();
 
-  constructor(fixedDtMs: number = 16) {
+  // Default to 120Hz physics step. With time-step invariant damping, this improves visual smoothness
+  // on high refresh displays without changing feel.
+  constructor(fixedDtMs: number = 8) {
     this.fixedDtMs = fixedDtMs;
     this.accumulator = 0;
     this.world = this.createInitialWorld();
@@ -232,30 +234,37 @@ export class GameEngine {
     }
   }
 
-  /** Get immutable snapshot for React rendering with extrapolated positions */
+  /** Get immutable snapshot for React rendering with interpolated positions */
   getSnapshot(): GameSnapshot {
-    // Calculate extrapolation factor - how much time since last physics step
-    // We use extrapolation (predict forward) instead of interpolation (look back)
-    // because it feels more responsive
-    const extrapolateMs = this.accumulator;
-    const extrapolateFactor = extrapolateMs / this.fixedDtMs;
+    // Interpolation alpha (0..1): how far we are between the previous physics tick and the current one.
+    // Using interpolation avoids "prediction pops" (common with extrapolation) at high speeds / collisions.
+    const alpha = Math.max(0, Math.min(1, this.accumulator / this.fixedDtMs));
 
-    // Create shallow copies of cars array with EXTRAPOLATED position/rotation
+    // Create shallow copies of cars array with INTERPOLATED position/rotation
     const carsCopy = this.world.cars.map(car => {
-      // Extrapolate position based on current velocity
-      // This predicts where the car WILL be at render time
-      const extrapPosition = {
-        x: car.position.x + car.velocity.x * extrapolateFactor,
-        y: car.position.y + car.velocity.y * extrapolateFactor,
-      };
+      const prev = this.previousStates.get(car.id);
 
-      // Extrapolate rotation based on angular velocity
-      const extrapRotation = car.rotation + car.angularVelocity * extrapolateFactor;
+      // Default: current state (no interpolation available)
+      let interpPosition: Vector2D = { x: car.position.x, y: car.position.y };
+      let interpRotation = car.rotation;
+
+      if (prev) {
+        interpPosition = {
+          x: prev.position.x + (car.position.x - prev.position.x) * alpha,
+          y: prev.position.y + (car.position.y - prev.position.y) * alpha,
+        };
+
+        // Interpolate rotation via shortest path (handle wrap-around at +/- PI)
+        let deltaRotation = car.rotation - prev.rotation;
+        while (deltaRotation > Math.PI) deltaRotation -= Math.PI * 2;
+        while (deltaRotation < -Math.PI) deltaRotation += Math.PI * 2;
+        interpRotation = prev.rotation + deltaRotation * alpha;
+      }
 
       return {
         ...car,
-        position: extrapPosition,
-        rotation: extrapRotation,
+        position: interpPosition,
+        rotation: interpRotation,
         velocity: { ...car.velocity },
         lastPosition: { ...car.lastPosition },
         input: { ...car.input },
@@ -268,7 +277,7 @@ export class GameEngine {
       gamePhase: this.world.gamePhase,
       winner: this.world.winner ? { ...this.world.winner } : null,
       gameTime: this.world.gameTime,
-      alpha: extrapolateFactor,
+      alpha,
     };
   }
 
@@ -299,13 +308,13 @@ export class GameEngine {
 let globalEngine: GameEngine | null = null;
 
 export function createInitialGameState(): GameSnapshot {
-  globalEngine = new GameEngine(16);
+  globalEngine = new GameEngine(8);
   return globalEngine.getSnapshot();
 }
 
 export function startGame(): GameSnapshot {
   if (!globalEngine) {
-    globalEngine = new GameEngine(16);
+    globalEngine = new GameEngine(8);
   }
   globalEngine.start();
   return globalEngine.getSnapshot();
@@ -313,7 +322,7 @@ export function startGame(): GameSnapshot {
 
 export function restartGame(): GameSnapshot {
   if (!globalEngine) {
-    globalEngine = new GameEngine(16);
+    globalEngine = new GameEngine(8);
   }
   globalEngine.restart();
   return globalEngine.getSnapshot();
@@ -321,7 +330,7 @@ export function restartGame(): GameSnapshot {
 
 export function updateGame(deltaTime: number): GameSnapshot {
   if (!globalEngine) {
-    globalEngine = new GameEngine(16);
+    globalEngine = new GameEngine(8);
     globalEngine.start();
   }
   globalEngine.step(deltaTime);

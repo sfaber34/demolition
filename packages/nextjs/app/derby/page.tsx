@@ -25,7 +25,7 @@ export default function DerbyPage() {
 
   // Get initial snapshot for state
   const [gameSnapshot, setGameSnapshot] = useState<GameSnapshot>(() => {
-    const engine = new GameEngine(16);
+    const engine = new GameEngine(8);
     engineRef.current = engine;
     return engine.getSnapshot();
   });
