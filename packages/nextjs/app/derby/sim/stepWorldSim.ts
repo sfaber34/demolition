@@ -43,7 +43,14 @@ export function stepWorldSim(world: WorldSim, dtMs: number): SimEvent[] {
   for (const car of world.cars) {
     if (!car.isAlive) continue;
 
-    // Save lastPosition for stuck detection (before position updates)
+    // Calculate REAL velocity BEFORE updating lastPosition
+    // This captures how much the car actually moved last frame
+    // Store it for use in applyControls (steering needs previous frame's real movement)
+    const dt = dtMs / 16.67;
+    car.prevFrameRealVelocity.x = (car.position.x - car.lastPosition.x) / dt;
+    car.prevFrameRealVelocity.y = (car.position.y - car.lastPosition.y) / dt;
+
+    // Save lastPosition for next frame's real velocity calculation
     car.lastPosition.x = car.position.x;
     car.lastPosition.y = car.position.y;
 

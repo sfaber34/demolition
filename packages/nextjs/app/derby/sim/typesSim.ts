@@ -52,6 +52,10 @@ export interface CarSim {
   targetId: string | null;
   stuckTimer: number;
   lastPosition: Vector2D;
+
+  // Real velocity from previous frame (for use in applyControls before position updates)
+  // This is the ACTUAL movement that occurred, stored at end of frame for next frame's use
+  prevFrameRealVelocity: Vector2D;
 }
 
 /** Core world simulation state */

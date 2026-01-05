@@ -80,6 +80,23 @@ export function getStateSpeed(car: CarSim): number {
   return vec.length(car.velocity);
 }
 
+/**
+ * Get the REAL velocity from the PREVIOUS frame.
+ * This is stored on the car and represents actual movement that occurred.
+ * Use this when you need real velocity BEFORE the current frame's position updates.
+ */
+export function getPrevFrameRealVelocity(car: CarSim): Vector2D {
+  return car.prevFrameRealVelocity;
+}
+
+/**
+ * Get the REAL speed from the PREVIOUS frame (magnitude of prevFrameRealVelocity).
+ * Use this in applyControls where we need real movement but position hasn't updated yet.
+ */
+export function getPrevFrameRealSpeed(car: CarSim): number {
+  return vec.length(car.prevFrameRealVelocity);
+}
+
 // ============ Physics Interface ============
 
 export interface IPhysicsEngine {
@@ -159,8 +176,10 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     const dt = dtMs / 16.67;
     const forward = this.getCarForward(car);
 
-    // Use centralized real velocity calculation
-    const realSpeed = getRealSpeed(car, dtMs);
+    // Use REAL speed from PREVIOUS FRAME for steering effectiveness
+    // This is the actual movement that occurred, stored before lastPosition was updated.
+    // A car blocked against a wall will have low real speed even with high state velocity.
+    const realSpeed = getPrevFrameRealSpeed(car);
 
     // Apply throttle
     const accelForce = input.throttle * car.acceleration * car.traction;
@@ -171,7 +190,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       car.velocity = vec.add(car.velocity, vec.mul(forward, accelForce * dt));
     }
 
-    // Apply steering - use real speed (max achievable is ~10)
+    // Apply steering - use real speed from previous frame (max achievable is ~10)
     // Steering effectiveness scales from 0 at standstill to 1.0 at max speed
     const MAX_REAL_SPEED = 10;
     const steerEffectiveness = Math.min(1.0, realSpeed / MAX_REAL_SPEED) * car.cornering;
