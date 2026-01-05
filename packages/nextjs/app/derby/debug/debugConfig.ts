@@ -13,11 +13,11 @@ export type HudDebugValue = "dmg" | "wallDistance" | "realVelocity" | "stateVelo
 
 export const DEBUG_CONFIG = {
   // Master switch - set to false to disable all debug overlays
-  enabled: true,
+  enabled: false,
 
   // HUD debug display - what to show in place of DMG in the HUD
   // Set to 'dmg' for normal production display
-  hudDebugValue: "realVelocity" as HudDebugValue,
+  hudDebugValue: "dmg" as HudDebugValue,
 
   // Individual overlays (only active when enabled=true)
   showWallDistance: false, // Distance to nearest wall (in-game overlay)

@@ -229,30 +229,14 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
 
     car.velocity = vec.add(vec.mul(forward, forwardSpeed), vec.mul(right, newLateralSpeed));
 
-    // ============ VELOCITY CORRECTION ============
-    // Sync state velocity to reality. If the car didn't actually move as much as
-    // state velocity suggests (e.g., blocked by wall/car), reduce state velocity.
-    // This ensures car.velocity accurately represents actual movement.
-    const realVelocity = _calcVelocityFromPositionDelta(car, dtMs);
-    const realSpeed = vec.length(realVelocity);
-    const stateSpeed = vec.length(car.velocity);
-
-    // If state velocity is significantly higher than real velocity, the car is blocked
-    // Blend state velocity toward real velocity to keep physics honest
-    if (stateSpeed > 0.1 && realSpeed < stateSpeed * 0.5) {
-      // Car is blocked - state says moving fast, reality says not moving
-      // Lerp state velocity toward real velocity (75% correction)
-      car.velocity = vec.lerp(car.velocity, realVelocity, 0.75);
-    }
-
-    // Check for spin-out - uses real speed (actual movement)
-    if (Math.abs(car.angularVelocity) > PHYSICS_CONFIG.spinOutThreshold && realSpeed > 6) {
+    // Check for spin-out
+    const speed = vec.length(car.velocity);
+    if (Math.abs(car.angularVelocity) > PHYSICS_CONFIG.spinOutThreshold && speed > 6) {
       car.velocity = vec.mul(car.velocity, 0.98);
     }
 
     // Clamp velocity to max speed
-    const finalSpeed = vec.length(car.velocity);
-    if (finalSpeed > car.maxSpeed) {
+    if (speed > car.maxSpeed) {
       car.velocity = vec.mul(vec.normalize(car.velocity), car.maxSpeed);
     }
   }
