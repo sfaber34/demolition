@@ -575,19 +575,18 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     let damageA: number;
     let damageB: number;
 
-    // Attacker (faster car) deals more damage
+    // Attacker (faster car) takes less damage, target takes more
     // Use ACTUAL speeds (movement) instead of state velocity!
-    // A car holding throttle into another has high state velocity but low actual speed.
     if (actualSpeedA > actualSpeedB + 2) {
-      // Car A is actually moving faster - B takes more damage
-      damageA = baseDamage * 0.3;
-      damageB = baseDamage * 0.7;
+      // Car A is attacking - A takes 15%, B takes 85%
+      damageA = baseDamage * 0.15;
+      damageB = baseDamage * 0.85;
     } else if (actualSpeedB > actualSpeedA + 2) {
-      // Car B is actually moving faster - A takes more damage
-      damageA = baseDamage * 0.7;
-      damageB = baseDamage * 0.3;
+      // Car B is attacking - B takes 15%, A takes 85%
+      damageA = baseDamage * 0.85;
+      damageB = baseDamage * 0.15;
     } else {
-      // Similar actual speeds - both take moderate damage
+      // Similar speeds - split evenly
       damageA = baseDamage * 0.5;
       damageB = baseDamage * 0.5;
     }
