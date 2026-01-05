@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { memo, useMemo } from "react";
 import { CarSim } from "../sim/typesSim";
 
 interface CarProps {
   car: CarSim;
 }
 
-export const Car: React.FC<CarProps> = ({ car }) => {
+export const Car: React.FC<CarProps> = memo(({ car }) => {
   const { position, rotation, width, height, color, health, maxHealth, isAlive } = car;
 
   const healthPercent = health / maxHealth;
@@ -203,6 +203,7 @@ export const Car: React.FC<CarProps> = ({ car }) => {
       <rect x={-width / 2 + 2} y={height / 2 - 2} width={10} height={5} fill="#111" rx={1} />
     </g>
   );
-};
+});
+Car.displayName = "Car";
 
 export default Car;

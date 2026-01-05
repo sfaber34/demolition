@@ -1,9 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { memo } from "react";
 import { ARENA_CONFIG } from "../sim/typesSim";
 
-export const Arena: React.FC = () => {
+export const Arena: React.FC = memo(() => {
   const { width, height, wallThickness } = ARENA_CONFIG;
 
   // Generate wood plank pattern for walls
@@ -192,6 +192,7 @@ export const Arena: React.FC = () => {
       <rect x={0} y={0} width={width} height={height} fill="none" stroke="#2d1f0f" strokeWidth={4} />
     </g>
   );
-};
+});
+Arena.displayName = "Arena";
 
 export default Arena;

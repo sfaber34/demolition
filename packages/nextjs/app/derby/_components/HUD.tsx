@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { memo } from "react";
 import { DEBUG_CONFIG, HudDebugValue } from "../debug/debugConfig";
 import { getSpeedColor, getWallDistColor } from "../debug/debugUtils";
 import { getCarWallDistance, getSpeed } from "../physics/PhysicsEngine";
@@ -10,7 +10,7 @@ interface HUDProps {
   cars: CarSim[];
 }
 
-export const HUD: React.FC<HUDProps> = ({ cars }) => {
+export const HUD: React.FC<HUDProps> = memo(({ cars }) => {
   const aliveCars = cars.filter(c => c.isAlive);
 
   return (
@@ -27,7 +27,8 @@ export const HUD: React.FC<HUDProps> = ({ cars }) => {
       )}
     </div>
   );
-};
+});
+HUD.displayName = "HUD";
 
 interface CarStatusProps {
   car: CarSim;
@@ -74,7 +75,7 @@ function getDebugDisplay(car: CarSim, debugValue: HudDebugValue): { label: strin
   }
 }
 
-const CarStatus: React.FC<CarStatusProps> = ({ car, isActive }) => {
+const CarStatus: React.FC<CarStatusProps> = memo(({ car, isActive }) => {
   const healthPercent = Math.max(0, (car.health / car.maxHealth) * 100);
 
   // Health bar color based on health level
@@ -142,6 +143,7 @@ const CarStatus: React.FC<CarStatusProps> = ({ car, isActive }) => {
       </div>
     </div>
   );
-};
+});
+CarStatus.displayName = "CarStatus";
 
 export default HUD;

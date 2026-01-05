@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { memo } from "react";
 import { getCarForward, getCarWallDistance, getSpeed, getVelocity } from "../physics/PhysicsEngine";
 import { CarSim } from "../sim/typesSim";
 import { DEBUG_CONFIG } from "./debugConfig";
@@ -13,7 +13,7 @@ interface DebugOverlayProps {
 /**
  * Debug overlay for a single car (rendered in SVG on the arena)
  */
-const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
+const CarDebugInfo: React.FC<{ car: CarSim }> = memo(({ car }) => {
   const { position } = car;
 
   // Build array of text lines to display
@@ -108,12 +108,13 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
       )}
     </g>
   );
-};
+});
+CarDebugInfo.displayName = "CarDebugInfo";
 
 /**
  * Main debug overlay component - renders debug info for all cars
  */
-export const DebugOverlay: React.FC<DebugOverlayProps> = ({ cars }) => {
+export const DebugOverlay: React.FC<DebugOverlayProps> = memo(({ cars }) => {
   // Early exit if debug is disabled
   if (!DEBUG_CONFIG.enabled) {
     return null;
@@ -155,6 +156,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({ cars }) => {
         ))}
     </g>
   );
-};
+});
+DebugOverlay.displayName = "DebugOverlay";
 
 export default DebugOverlay;

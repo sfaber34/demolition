@@ -1,13 +1,13 @@
 "use client";
 
-import React from "react";
+import React, { memo } from "react";
 import { CarSim } from "../sim/typesSim";
 
 interface StatsPanelProps {
   cars: CarSim[];
 }
 
-export const StatsPanel: React.FC<StatsPanelProps> = ({ cars }) => {
+export const StatsPanel: React.FC<StatsPanelProps> = memo(({ cars }) => {
   return (
     <div className="w-full px-4 py-4 bg-gradient-to-t from-zinc-900 to-zinc-800 border-t-2 border-amber-900/50">
       <h3 className="text-center text-amber-500 font-bold text-sm mb-3 uppercase tracking-widest">Driver Stats</h3>
@@ -18,13 +18,14 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ cars }) => {
       </div>
     </div>
   );
-};
+});
+StatsPanel.displayName = "StatsPanel";
 
 interface CarStatsProps {
   car: CarSim;
 }
 
-const CarStats: React.FC<CarStatsProps> = ({ car }) => {
+const CarStats: React.FC<CarStatsProps> = memo(({ car }) => {
   // Normalize stats for progress bars (assuming max values)
   const maxAcceleration = 1.5;
   const maxCornering = 1.2;
@@ -80,6 +81,7 @@ const CarStats: React.FC<CarStatsProps> = ({ car }) => {
       })}
     </div>
   );
-};
+});
+CarStats.displayName = "CarStats";
 
 export default StatsPanel;

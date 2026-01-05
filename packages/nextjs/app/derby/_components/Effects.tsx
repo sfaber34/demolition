@@ -1,12 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { memo } from "react";
 import { DamageNumber, Explosion, SmokeParticle, Spark, TireMark } from "../effects/effectsTypes";
 import { getCarRear, getSpeed } from "../physics/PhysicsEngine";
 import { CarSim } from "../sim/typesSim";
 
 // Tire marks on the ground
-export const TireMarks: React.FC<{ marks: TireMark[] }> = ({ marks }) => (
+export const TireMarks: React.FC<{ marks: TireMark[] }> = memo(({ marks }) => (
   <g>
     {marks.map(mark => (
       <ellipse
@@ -20,10 +20,11 @@ export const TireMarks: React.FC<{ marks: TireMark[] }> = ({ marks }) => (
       />
     ))}
   </g>
-);
+));
+TireMarks.displayName = "TireMarks";
 
-// Sparks from collisions
-export const Sparks: React.FC<{ sparks: Spark[] }> = ({ sparks }) => (
+// Sparks from collisions - removed blur filter for performance
+export const Sparks: React.FC<{ sparks: Spark[] }> = memo(({ sparks }) => (
   <g>
     {sparks.map(spark => {
       const lifeRatio = spark.life / spark.maxLife;
@@ -35,15 +36,15 @@ export const Sparks: React.FC<{ sparks: Spark[] }> = ({ sparks }) => (
           r={2 + lifeRatio * 3}
           fill={spark.color}
           opacity={lifeRatio}
-          style={{ filter: "blur(0.5px)" }}
         />
       );
     })}
   </g>
-);
+));
+Sparks.displayName = "Sparks";
 
-// Smoke particles
-export const SmokeParticles: React.FC<{ particles: SmokeParticle[] }> = ({ particles }) => (
+// Smoke particles - removed blur filter for performance
+export const SmokeParticles: React.FC<{ particles: SmokeParticle[] }> = memo(({ particles }) => (
   <g>
     {particles.map(particle => (
       <circle
@@ -52,26 +53,38 @@ export const SmokeParticles: React.FC<{ particles: SmokeParticle[] }> = ({ parti
         cy={particle.position.y}
         r={particle.size}
         fill={`rgba(80, 80, 80, ${particle.opacity})`}
-        style={{ filter: "blur(2px)" }}
       />
     ))}
   </g>
-);
+));
+SmokeParticles.displayName = "SmokeParticles";
 
 // Explosion effect - uses ageMs instead of Date.now()
-export const ExplosionEffect: React.FC<{ explosion: Explosion }> = ({ explosion }) => {
+// Removed blur filters for performance
+export const ExplosionEffect: React.FC<{ explosion: Explosion }> = memo(({ explosion }) => {
   // Use ageMs for progress instead of Date.now()
   const progress = Math.min(1, explosion.ageMs / explosion.duration);
 
   return (
     <g>
-      {/* Central flash */}
+      {/* Central flash - multiple circles for soft glow effect without blur */}
       <circle
         cx={explosion.position.x}
         cy={explosion.position.y}
-        r={30 * progress}
-        fill={`rgba(255, 200, 100, ${1 - progress})`}
-        style={{ filter: "blur(5px)" }}
+        r={35 * progress}
+        fill={`rgba(255, 200, 100, ${(1 - progress) * 0.3})`}
+      />
+      <circle
+        cx={explosion.position.x}
+        cy={explosion.position.y}
+        r={25 * progress}
+        fill={`rgba(255, 180, 80, ${(1 - progress) * 0.5})`}
+      />
+      <circle
+        cx={explosion.position.x}
+        cy={explosion.position.y}
+        r={15 * progress}
+        fill={`rgba(255, 150, 50, ${(1 - progress) * 0.8})`}
       />
       {/* Particles */}
       {explosion.particles.map((particle, i) => {
@@ -82,58 +95,46 @@ export const ExplosionEffect: React.FC<{ explosion: Explosion }> = ({ explosion 
         const size = particle.size * (1 - progress * 0.5);
 
         return (
-          <g key={i}>
-            {/* Debris */}
-            <rect
-              x={x - size / 2}
-              y={y - size / 2}
-              width={size}
-              height={size}
-              fill={particle.color}
-              opacity={opacity}
-              transform={`rotate(${particle.rotation + progress * 360}, ${x}, ${y})`}
-            />
-          </g>
+          <rect
+            key={i}
+            x={x - size / 2}
+            y={y - size / 2}
+            width={size}
+            height={size}
+            fill={particle.color}
+            opacity={opacity}
+            transform={`rotate(${particle.rotation + progress * 360}, ${x}, ${y})`}
+          />
         );
       })}
-      {/* Smoke ring */}
+      {/* Smoke ring - no blur */}
       <circle
         cx={explosion.position.x}
         cy={explosion.position.y}
         r={50 * progress}
         fill="none"
-        stroke={`rgba(100, 100, 100, ${(1 - progress) * 0.5})`}
-        strokeWidth={10 * (1 - progress)}
-        style={{ filter: "blur(3px)" }}
+        stroke={`rgba(100, 100, 100, ${(1 - progress) * 0.4})`}
+        strokeWidth={8 * (1 - progress)}
       />
     </g>
   );
-};
+});
+ExplosionEffect.displayName = "ExplosionEffect";
 
 // Smoke/Fire effects for damaged cars
-// Note: These still use Date.now() for continuous animation since they're
-// purely visual effects that don't affect game state
-export const CarEffects: React.FC<{ car: CarSim }> = ({ car }) => {
+// Uses deterministic offsets based on car position for animation
+// Removed Date.now() and blur filters for performance
+export const CarEffects: React.FC<{ car: CarSim }> = memo(({ car }) => {
   if (!car.isAlive) {
-    // Dead car - continuous smoke
+    // Dead car - static smoke plume (no animation for performance)
     return (
       <g>
-        {Array.from({ length: 5 }).map((_, i) => {
-          const offset = (Date.now() / 100 + i * 20) % 100;
-          const x = car.position.x + (Math.sin(offset * 0.3) - 0.5) * 10;
-          const y = car.position.y - offset * 0.5;
-          const size = 5 + offset * 0.15;
-          const opacity = Math.max(0, 0.4 - offset * 0.004);
-          return (
-            <circle
-              key={i}
-              cx={x}
-              cy={y}
-              r={size}
-              fill={`rgba(60, 60, 60, ${opacity})`}
-              style={{ filter: "blur(3px)" }}
-            />
-          );
+        {Array.from({ length: 4 }).map((_, i) => {
+          const x = car.position.x + (i % 2 === 0 ? -5 : 5);
+          const y = car.position.y - 5 - i * 8;
+          const size = 6 + i * 2;
+          const opacity = 0.35 - i * 0.07;
+          return <circle key={i} cx={x} cy={y} r={size} fill={`rgba(60, 60, 60, ${opacity})`} />;
         })}
       </g>
     );
@@ -144,17 +145,15 @@ export const CarEffects: React.FC<{ car: CarSim }> = ({ car }) => {
   // Smoke for damaged cars (below 50% health)
   if (healthPercent < 0.5) {
     const intensity = 1 - healthPercent * 2;
-    const particleCount = Math.floor(intensity * 4);
+    const particleCount = Math.floor(intensity * 3);
 
     return (
       <g>
         {Array.from({ length: particleCount }).map((_, i) => {
-          const time = Date.now() / 100;
-          const phase = (time + i * 25) % 60;
-          const x = car.position.x + Math.sin(time * 0.1 + i) * 5;
-          const y = car.position.y - phase * 0.4;
-          const size = 3 + phase * 0.1;
-          const opacity = Math.max(0, 0.3 * intensity - phase * 0.005);
+          const x = car.position.x + (i % 2 === 0 ? -3 : 3);
+          const y = car.position.y - 5 - i * 6;
+          const size = 4 + i;
+          const opacity = Math.max(0, 0.25 * intensity - i * 0.05);
 
           return (
             <circle
@@ -163,26 +162,21 @@ export const CarEffects: React.FC<{ car: CarSim }> = ({ car }) => {
               cy={y}
               r={size}
               fill={healthPercent < 0.25 ? `rgba(200, 100, 50, ${opacity})` : `rgba(80, 80, 80, ${opacity})`}
-              style={{ filter: "blur(2px)" }}
             />
           );
         })}
-        {/* Fire flicker for critical damage */}
+        {/* Fire effect for critical damage - static flames */}
         {healthPercent < 0.25 && (
           <>
-            {Array.from({ length: 3 }).map((_, i) => {
-              const flicker = Math.sin(Date.now() / 50 + i * 2) * 0.3 + 0.7;
-              return (
-                <circle
-                  key={`fire-${i}`}
-                  cx={car.position.x + (Math.sin(Date.now() / 100 + i) - 0.5) * 10}
-                  cy={car.position.y + (Math.cos(Date.now() / 80 + i * 2) - 0.5) * 10}
-                  r={4 + Math.sin(Date.now() / 50 + i * 3) * 1.5}
-                  fill={`rgba(255, ${100 + Math.sin(Date.now() / 30 + i) * 50}, 0, ${flicker * 0.5})`}
-                  style={{ filter: "blur(1px)" }}
-                />
-              );
-            })}
+            {Array.from({ length: 2 }).map((_, i) => (
+              <circle
+                key={`fire-${i}`}
+                cx={car.position.x + (i === 0 ? -4 : 4)}
+                cy={car.position.y - 2}
+                r={5}
+                fill="rgba(255, 120, 0, 0.4)"
+              />
+            ))}
           </>
         )}
       </g>
@@ -190,13 +184,14 @@ export const CarEffects: React.FC<{ car: CarSim }> = ({ car }) => {
   }
 
   return null;
-};
+});
+CarEffects.displayName = "CarEffects";
 
 // Dust cloud effect when moving
-export const DustCloud: React.FC<{ car: CarSim }> = ({ car }) => {
+// Removed Date.now() and blur filter for performance
+export const DustCloud: React.FC<{ car: CarSim }> = memo(({ car }) => {
   if (!car.isAlive) return null;
 
-  // car.velocity is the velocity
   const speed = getSpeed(car);
   if (speed < 2) return null;
 
@@ -211,31 +206,22 @@ export const DustCloud: React.FC<{ car: CarSim }> = ({ car }) => {
   return (
     <g>
       {Array.from({ length: particleCount }).map((_, i) => {
-        // Use deterministic offset based on time + index for some variation
-        const timeOffset = (Date.now() / 50 + i * 37) % 100;
-        const spreadX = Math.sin(timeOffset * 0.3 + i * 1.5) * 10;
-        const spreadY = Math.cos(timeOffset * 0.25 + i * 2) * 10;
+        // Use deterministic offset based on car position for stable rendering
+        const spreadX = (i % 2 === 0 ? -1 : 1) * 5 * (i + 1);
+        const spreadY = ((i % 3) - 1) * 4;
         const x = rearX + spreadX;
         const y = rearY + spreadY;
-        const size = 4 + (timeOffset % 1) * 6;
+        const size = 5 + i * 2;
 
-        return (
-          <circle
-            key={i}
-            cx={x}
-            cy={y}
-            r={size}
-            fill={`rgba(180, 160, 130, ${0.15 * intensity})`}
-            style={{ filter: "blur(2px)" }}
-          />
-        );
+        return <circle key={i} cx={x} cy={y} r={size} fill={`rgba(180, 160, 130, ${0.12 * intensity})`} />;
       })}
     </g>
   );
-};
+});
+DustCloud.displayName = "DustCloud";
 
-// Floating damage numbers
-export const DamageNumbers: React.FC<{ damageNumbers: DamageNumber[] }> = ({ damageNumbers }) => (
+// Floating damage numbers - removed drop-shadow filter for performance
+export const DamageNumbers: React.FC<{ damageNumbers: DamageNumber[] }> = memo(({ damageNumbers }) => (
   <g>
     {damageNumbers.map(dmg => {
       const lifeRatio = dmg.life / dmg.maxLife;
@@ -244,7 +230,7 @@ export const DamageNumbers: React.FC<{ damageNumbers: DamageNumber[] }> = ({ dam
 
       return (
         <g key={dmg.id}>
-          {/* Shadow/outline for readability */}
+          {/* Shadow/outline for readability - stroke instead of drop-shadow */}
           <text
             x={dmg.position.x}
             y={dmg.position.y}
@@ -253,8 +239,10 @@ export const DamageNumbers: React.FC<{ damageNumbers: DamageNumber[] }> = ({ dam
             fontSize={16 * scale}
             fontWeight="bold"
             fontFamily="system-ui, -apple-system, sans-serif"
-            fill="#000"
-            opacity={opacity * 0.8}
+            fill={dmg.color}
+            stroke="#000"
+            strokeWidth={2}
+            opacity={opacity}
             style={{
               pointerEvents: "none",
               userSelect: "none",
@@ -262,10 +250,10 @@ export const DamageNumbers: React.FC<{ damageNumbers: DamageNumber[] }> = ({ dam
           >
             -{dmg.damage}
           </text>
-          {/* Main text */}
+          {/* Main text on top */}
           <text
             x={dmg.position.x}
-            y={dmg.position.y - 1}
+            y={dmg.position.y}
             textAnchor="middle"
             dominantBaseline="middle"
             fontSize={16 * scale}
@@ -276,7 +264,6 @@ export const DamageNumbers: React.FC<{ damageNumbers: DamageNumber[] }> = ({ dam
             style={{
               pointerEvents: "none",
               userSelect: "none",
-              filter: "drop-shadow(0 0 2px rgba(0,0,0,0.5))",
             }}
           >
             -{dmg.damage}
@@ -285,7 +272,8 @@ export const DamageNumbers: React.FC<{ damageNumbers: DamageNumber[] }> = ({ dam
       );
     })}
   </g>
-);
+));
+DamageNumbers.displayName = "DamageNumbers";
 
 const Effects = {
   TireMarks,
