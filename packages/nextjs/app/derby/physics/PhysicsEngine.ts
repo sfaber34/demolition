@@ -191,7 +191,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     // Steering effectiveness scales from 0 at standstill to 1.0 at max speed
     const MAX_REAL_SPEED = 10;
     const steerEffectiveness = Math.min(1.0, realSpeed / MAX_REAL_SPEED) * car.cornering;
-    car.angularVelocity += input.steer * 0.14 * steerEffectiveness * dt;
+    car.angularVelocity += input.steer * 0.02 * steerEffectiveness * dt;
 
     // Clamp angular velocity
     const maxAngularVel = 0.18 / car.traction;
