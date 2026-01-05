@@ -122,10 +122,11 @@ export class GameEngine {
     this.accumulator = 0;
     this.world = this.createInitialWorld();
     this.effects = createEmptyEffectsState();
-    // Car 0 is player-controlled via keyboard
+    // Car 0 is red by default. Keep keyboard controller around for optional testing,
+    // but by default we let AI drive all cars (including red).
     this.keyboardController = new KeyboardController(0);
-    // Cars 1-3 are controlled by AI. Skip index 0 since it's player-controlled.
-    this.aiController = new DerbyAiController({ skipIndices: [0] });
+    // AI drives all cars (0-3)
+    this.aiController = new DerbyAiController();
     // Initialize previous states
     this.savePreviousStates();
   }
@@ -200,8 +201,7 @@ export class GameEngine {
       }
 
       // 1. Update controllers (sets car.input)
-      // Keyboard controller handles car 0, AI controller handles the rest
-      this.keyboardController.update(this.world, this.fixedDtMs, this.world.gameTime);
+      // AI controller handles all cars (including red / car 0)
       this.aiController.update(this.world, this.fixedDtMs, this.world.gameTime);
 
       // 2. Step simulation (applies inputs, physics, collisions)
