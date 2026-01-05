@@ -435,6 +435,22 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       return { damageA: 0, damageB: 0 };
     }
 
+    // ACTUAL VELOCITY for damage calculations:
+    // Use position delta (actual movement) instead of state velocity (car.velocity)
+    // State velocity can be high when a car is applying throttle but not actually moving.
+    // Actual velocity = (position - lastPosition) represents TRUE movement per frame.
+    const actualVelA = vec.sub(carA.position, carA.lastPosition);
+    const actualVelB = vec.sub(carB.position, carB.lastPosition);
+    const actualSpeedA = vec.length(actualVelA);
+    const actualSpeedB = vec.length(actualVelB);
+
+    // Recalculate damage impact speed using ACTUAL relative velocity, not state velocity
+    const actualRelVel = vec.sub(actualVelA, actualVelB);
+    const actualVelAlongNormal = vec.dot(actualRelVel, normal);
+    // Positive = cars closing, negative = separating
+    const actualDamageImpactSpeed =
+      actualVelAlongNormal > 0 ? actualVelAlongNormal : Math.abs(actualVelAlongNormal) * 0.5;
+
     // Check collision cooldown - prevents grinding damage from repeated collisions
     if (!canDealDamage(carA.id, carB.id, nowMs, cooldowns)) {
       debugLog.log({
@@ -459,31 +475,32 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       return { damageA: 0, damageB: 0 };
     }
 
-    // Damage scales with relative impact speed (not combined speed)
-    // Based on log analysis: typical damageImpactSpeed is 8-15, max observed ~15
+    // Damage scales with ACTUAL relative impact speed (not state velocity!)
+    // Use actualDamageImpactSpeed which is based on true position movement
     // Scale formula to realistic max observed
     const REALISTIC_MAX_IMPACT = 16;
-    const speedFactor = Math.min(1, damageImpactSpeed / REALISTIC_MAX_IMPACT);
+    const speedFactor = Math.min(1, actualDamageImpactSpeed / REALISTIC_MAX_IMPACT);
     // At max impact (15): baseDamage = 15 * 2.0 * 0.94 = 28 total, split = 14 each (strong hit)
     // At typical impact (10): baseDamage = 10 * 2.0 * 0.625 = 12.5 total, split = 6 each (medium hit)
     // At threshold (6): baseDamage = 6 * 2.0 * 0.375 = 4.5 total, split = 2.25 each (light hit)
-    const baseDamage = damageImpactSpeed * CAR_CONFIG.baseDamageMultiplier * speedFactor;
+    const baseDamage = actualDamageImpactSpeed * CAR_CONFIG.baseDamageMultiplier * speedFactor;
 
     let damageA: number;
     let damageB: number;
 
     // Attacker (faster car) deals more damage
-    // Thresholds scaled to realistic speeds (cars typically reach 5-12 speed)
-    if (stateSpeedA > stateSpeedB + 3) {
-      // Car A is faster - B takes more damage
+    // Use ACTUAL speeds (movement) instead of state velocity!
+    // A car holding throttle into another has high state velocity but low actual speed.
+    if (actualSpeedA > actualSpeedB + 2) {
+      // Car A is actually moving faster - B takes more damage
       damageA = baseDamage * 0.3;
       damageB = baseDamage * 0.7;
-    } else if (stateSpeedB > stateSpeedA + 3) {
-      // Car B is faster - A takes more damage
+    } else if (actualSpeedB > actualSpeedA + 2) {
+      // Car B is actually moving faster - A takes more damage
       damageA = baseDamage * 0.7;
       damageB = baseDamage * 0.3;
     } else {
-      // Similar speeds - both take moderate damage
+      // Similar actual speeds - both take moderate damage
       damageA = baseDamage * 0.5;
       damageB = baseDamage * 0.5;
     }
@@ -516,6 +533,10 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       relativeImpact: collision.damageImpactSpeed,
       combinedSpeed: impactSpeed,
       damageImpactSpeed,
+      // Actual movement-based values used for damage
+      actualSpeedA,
+      actualSpeedB,
+      actualDamageImpactSpeed,
       damageA,
       damageB,
       totalDamage: damageA + damageB,

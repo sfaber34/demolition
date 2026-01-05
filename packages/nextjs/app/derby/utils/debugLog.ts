@@ -45,6 +45,11 @@ export interface CollisionLogEntry {
   combinedSpeed: number;
   damageImpactSpeed: number;
 
+  // Actual movement-based velocity (true velocity, not controller state)
+  actualSpeedA?: number;
+  actualSpeedB?: number;
+  actualDamageImpactSpeed?: number;
+
   // Damage results
   damageA: number;
   damageB: number;
