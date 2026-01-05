@@ -1,5 +1,6 @@
 // Debug Configuration - Toggle debug overlays here
 // All flags are easy booleans - flip to true/false as needed
+import type { AIBehavior } from "../sim/typesSim";
 
 /**
  * What value to show in the HUD below health bars (replaces DMG when debug is on)
@@ -9,6 +10,21 @@
  * - 'throttle': Current throttle input
  */
 export type HudDebugValue = "dmg" | "wallDistance" | "speed" | "throttle";
+
+/**
+ * AI testing helper:
+ * - Set to "orbiting" to test Wander + WallAvoid only (default).
+ * - Set to "striking" or "repositioning" to force those modes.
+ * - Set to "auto" once you want full behavior switching.
+ *
+ * Note: This config is independent of DEBUG_CONFIG.enabled so you can test AI
+ * without turning on visual overlays.
+ */
+export type AiForceMode = "auto" | AIBehavior;
+export const AI_TEST_CONFIG: { forceMode: AiForceMode } = {
+  // Default: start in wander+wall-avoid so you can tune driving first.
+  forceMode: "orbiting",
+};
 
 export const DEBUG_CONFIG = {
   // Master switch - set to false to disable all debug overlays

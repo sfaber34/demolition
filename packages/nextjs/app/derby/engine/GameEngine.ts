@@ -7,9 +7,9 @@
 // - Calls stepWorldSim to advance physics (emits SimEvents)
 // - Calls stepEffects to update VFX from events
 // - Provides getSnapshot() for React rendering (immutable copy)
+import { DerbyAiController } from "../controllers/DerbyAiController";
 import type { CarController } from "../controllers/controllerTypes";
 import { KeyboardController } from "../controllers/keyboardController";
-import { NoopController } from "../controllers/noopController";
 import { EffectsState, createEmptyEffectsState } from "../effects/effectsTypes";
 import { snapshotEffects, stepEffects } from "../effects/stepEffects";
 import { stepWorldSim } from "../sim/stepWorldSim";
@@ -111,7 +111,7 @@ export class GameEngine {
   private fixedDtMs: number;
   private accumulator: number;
   private keyboardController: KeyboardController;
-  private noopController: CarController;
+  private aiController: CarController;
   /** Previous car states for render interpolation */
   private previousStates: Map<string, PreviousCarState> = new Map();
 
@@ -124,9 +124,8 @@ export class GameEngine {
     this.effects = createEmptyEffectsState();
     // Car 0 is player-controlled via keyboard
     this.keyboardController = new KeyboardController(0);
-    // Cars 1-3 are controlled by NoopController (just sit there)
-    // Skip index 0 since it's player-controlled
-    this.noopController = new NoopController([0]);
+    // Cars 1-3 are controlled by AI. Skip index 0 since it's player-controlled.
+    this.aiController = new DerbyAiController({ skipIndices: [0] });
     // Initialize previous states
     this.savePreviousStates();
   }
@@ -201,9 +200,9 @@ export class GameEngine {
       }
 
       // 1. Update controllers (sets car.input)
-      // Keyboard controller handles car 0, NoopController handles the rest
+      // Keyboard controller handles car 0, AI controller handles the rest
       this.keyboardController.update(this.world, this.fixedDtMs, this.world.gameTime);
-      this.noopController.update(this.world, this.fixedDtMs, this.world.gameTime);
+      this.aiController.update(this.world, this.fixedDtMs, this.world.gameTime);
 
       // 2. Step simulation (applies inputs, physics, collisions)
       const events = stepWorldSim(this.world, this.fixedDtMs);
