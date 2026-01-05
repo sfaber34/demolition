@@ -21,7 +21,7 @@ import { ARENA_CONFIG, CAR_COLORS, CAR_CONFIG, CAR_NAMES, CarSim, Vector2D, Worl
 export interface GameSnapshot {
   cars: CarSim[];
   effects: EffectsState;
-  gamePhase: "title" | "playing" | "gameover";
+  gamePhase: "title" | "playing" | "victory" | "gameover";
   winner: CarSim | null;
   gameTime: number;
 }
@@ -143,6 +143,7 @@ export class GameEngine {
       gamePhase: "title",
       winner: null,
       gameTime: 0,
+      victoryTime: 0,
       collisionCooldowns: {},
     };
   }
@@ -166,7 +167,8 @@ export class GameEngine {
    * Uses fixed timestep internally for determinism.
    */
   step(dtMs: number): void {
-    if (this.world.gamePhase !== "playing") {
+    // Only step during playing or victory phases
+    if (this.world.gamePhase !== "playing" && this.world.gamePhase !== "victory") {
       return;
     }
 
@@ -174,6 +176,15 @@ export class GameEngine {
     this.accumulator += dtMs;
 
     while (this.accumulator >= this.fixedDtMs) {
+      // During victory, step the sim (for timer) and effects (for animations)
+      // but skip controller updates
+      if (this.world.gamePhase === "victory") {
+        stepWorldSim(this.world, this.fixedDtMs);
+        stepEffects(this.effects, [], this.fixedDtMs);
+        this.accumulator -= this.fixedDtMs;
+        continue;
+      }
+
       // 1. Update controllers (sets car.input)
       // Keyboard controller handles car 0, NoopController handles the rest
       this.keyboardController.update(this.world, this.fixedDtMs, this.world.gameTime);
@@ -211,7 +222,7 @@ export class GameEngine {
   }
 
   /** Get current game phase */
-  getPhase(): "title" | "playing" | "gameover" {
+  getPhase(): "title" | "playing" | "victory" | "gameover" {
     return this.world.gamePhase;
   }
 

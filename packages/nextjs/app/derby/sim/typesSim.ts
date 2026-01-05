@@ -61,9 +61,10 @@ export interface CarSim {
 /** Core world simulation state */
 export interface WorldSim {
   cars: CarSim[];
-  gamePhase: "title" | "playing" | "gameover";
+  gamePhase: "title" | "playing" | "victory" | "gameover";
   winner: CarSim | null;
   gameTime: number; // accumulated sim time in ms
+  victoryTime: number; // when victory phase started (for delay before gameover)
 
   /**
    * Deterministic collision damage cooldowns (ms in sim-time), keyed by "carA:carB".

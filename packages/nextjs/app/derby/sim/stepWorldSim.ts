@@ -30,6 +30,16 @@ import {
  * Returns an array of SimEvents for the effects layer.
  */
 export function stepWorldSim(world: WorldSim, dtMs: number): SimEvent[] {
+  // Victory phase: wait 3 seconds then transition to gameover
+  if (world.gamePhase === "victory") {
+    world.gameTime += dtMs;
+    const VICTORY_DELAY_MS = 3000;
+    if (world.gameTime - world.victoryTime >= VICTORY_DELAY_MS) {
+      world.gamePhase = "gameover";
+    }
+    return [];
+  }
+
   if (world.gamePhase !== "playing") {
     return [];
   }
@@ -163,11 +173,12 @@ export function stepWorldSim(world: WorldSim, dtMs: number): SimEvent[] {
     }
   }
 
-  // Phase 5: Check for game over
+  // Phase 5: Check for victory condition (1 car remaining)
   const aliveCars = world.cars.filter(c => c.isAlive);
-  if (aliveCars.length <= 1) {
-    world.gamePhase = "gameover";
+  if (aliveCars.length <= 1 && world.gamePhase === "playing") {
+    world.gamePhase = "victory";
     world.winner = aliveCars.length === 1 ? aliveCars[0] : null;
+    world.victoryTime = world.gameTime;
   }
 
   return events;
@@ -189,6 +200,7 @@ export function cloneWorldSim(world: WorldSim): WorldSim {
     gamePhase: world.gamePhase,
     winner: world.winner ? { ...world.winner } : null,
     gameTime: world.gameTime,
+    victoryTime: world.victoryTime,
     collisionCooldowns: { ...world.collisionCooldowns },
   };
 }

@@ -44,7 +44,9 @@ export default function DerbyPage() {
     const deltaTime = Math.min(timestamp - lastTimeRef.current, 50); // Cap delta
     lastTimeRef.current = timestamp;
 
-    if (engine.getPhase() === "playing") {
+    const phase = engine.getPhase();
+    // Run game loop during both playing and victory phases
+    if (phase === "playing" || phase === "victory") {
       engine.step(deltaTime);
       setGameSnapshot(engine.getSnapshot());
     }
@@ -138,7 +140,7 @@ export default function DerbyPage() {
           />
         )}
 
-        {gameSnapshot.gamePhase === "playing" && (
+        {(gameSnapshot.gamePhase === "playing" || gameSnapshot.gamePhase === "victory") && (
           <>
             {/* HUD */}
             <div
