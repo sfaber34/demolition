@@ -396,40 +396,44 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       }
     }
 
-    // Angular impulse - only apply significant spin for off-center/side impacts
-    // For head-on collisions, the impact should NOT cause spinning
+    // ============ ANGULAR IMPULSE (TORQUE) ============
+    // Off-center hits cause rotation. Torque = r × F
+    // Hit center → no spin. Hit corner → spin.
     const forwardA = this.getCarForward(carA);
     const forwardB = this.getCarForward(carB);
 
-    // How much is this a side hit? (0 = head-on, 1 = pure side)
-    // Use dot product of forward direction with collision normal
-    const sideFactorA = 1 - Math.abs(vec.dot(forwardA, normal));
-    const sideFactorB = 1 - Math.abs(vec.dot(forwardB, normal));
-
-    // Contact offset from center (cross product gives torque arm)
+    // Calculate where the contact point is relative to each car's center
     const contactToA = vec.sub(collision.contactPoint, carA.position);
     const contactToB = vec.sub(collision.contactPoint, carB.position);
-    const torqueArmA = contactToA.x * normal.y - contactToA.y * normal.x;
-    const torqueArmB = contactToB.x * normal.y - contactToB.y * normal.x;
 
-    // Much lower base multiplier, scaled by side factor
-    // Head-on (sideFactor ~= 0) → almost no spin
-    // Side hit (sideFactor ~= 1) → some spin
-    const angularMultiplier = 0.0015;
-    const angularImpulseA = torqueArmA * impactSpeed * angularMultiplier * sideFactorA;
-    const angularImpulseB = torqueArmB * impactSpeed * angularMultiplier * sideFactorB;
+    // Cross product gives signed torque arm
+    // Flipped sign so hitting right-front spins car left (CCW)
+    const torqueArmA = contactToA.y * normal.x - contactToA.x * normal.y;
+    const torqueArmB = contactToB.y * normal.x - contactToB.x * normal.y;
 
-    // Apply with reduced traction effect and cap max change
-    const maxAngularChange = 0.08; // Cap the spin per collision
+    // Normalize torque arm by car half-width to get 0-1 range for corner hits
+    const halfWidthA = carA.width / 2;
+    const halfWidthB = carB.width / 2;
+    const normalizedTorqueA = torqueArmA / halfWidthA;
+    const normalizedTorqueB = torqueArmB / halfWidthB;
+
+    // Angular impulse proportional to impact speed and how off-center the hit is
+    // Higher multiplier = more noticeable spin from corner hits
+    const angularMultiplier = 0.012;
+    const angularImpulseA = normalizedTorqueA * impactSpeed * angularMultiplier;
+    const angularImpulseB = normalizedTorqueB * impactSpeed * angularMultiplier;
+
+    // Cap max angular change per collision to prevent crazy spinning
+    const maxAngularChange = 0.15;
     const clampedImpulseA = Math.max(-maxAngularChange, Math.min(maxAngularChange, angularImpulseA));
     const clampedImpulseB = Math.max(-maxAngularChange, Math.min(maxAngularChange, angularImpulseB));
 
     carA.angularVelocity += clampedImpulseA;
     carB.angularVelocity -= clampedImpulseB;
 
-    // Apply extra angular damping after collision to prevent runaway spinning
-    carA.angularVelocity *= 0.85;
-    carB.angularVelocity *= 0.85;
+    // Moderate damping - don't want infinite spinning but allow some follow-through
+    carA.angularVelocity *= 0.9;
+    carB.angularVelocity *= 0.9;
 
     // Calculate damage using damageImpactSpeed
     // Based on log analysis: max car speed is ~10, typical collisions have damageImpactSpeed 8-15
