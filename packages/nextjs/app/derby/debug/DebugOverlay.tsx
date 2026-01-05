@@ -3,15 +3,7 @@
 import React from "react";
 import { CarSim } from "../sim/typesSim";
 import { DEBUG_CONFIG } from "./debugConfig";
-import {
-  getCarForward,
-  getRealSpeed,
-  getRealVelocity,
-  getSpeedColor,
-  getStateSpeed,
-  getWallDistColor,
-  getWallDistance,
-} from "./debugUtils";
+import { getCarForward, getSpeed, getSpeedColor, getVelocity, getWallDistColor, getWallDistance } from "./debugUtils";
 
 interface DebugOverlayProps {
   cars: CarSim[];
@@ -21,7 +13,7 @@ interface DebugOverlayProps {
  * Debug overlay for a single car (rendered in SVG on the arena)
  */
 const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
-  const { position, velocity } = car;
+  const { position } = car;
 
   // Build array of text lines to display
   const lines: { text: string; color: string }[] = [];
@@ -35,12 +27,11 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
   }
 
   if (DEBUG_CONFIG.showSpeed) {
-    // Use real speed (actual movement) for display
-    const realSpeed = getRealSpeed(car);
-    const stateSpeed = getStateSpeed(car);
+    // car.velocity IS the true velocity after physics correction
+    const speed = getSpeed(car);
     lines.push({
-      text: `spd: ${realSpeed.toFixed(1)} (${Math.round(stateSpeed)})`,
-      color: getSpeedColor(realSpeed, true),
+      text: `spd: ${speed.toFixed(1)}`,
+      color: getSpeedColor(speed),
     });
   }
 
@@ -62,10 +53,9 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
   // Starting Y offset above car
   const textStartY = -car.height / 2 - 8 - lines.length * 12;
 
-  // Calculate physics values using centralized functions
-  const realSpeed = getRealSpeed(car);
-  const stateSpeed = getStateSpeed(car);
-  const realVel = getRealVelocity(car);
+  // Get physics values - car.velocity IS the true velocity
+  const speed = getSpeed(car);
+  const vel = getVelocity(car);
   const forward = getCarForward(car);
 
   return (
@@ -90,26 +80,13 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
         </text>
       ))}
 
-      {/* Velocity vector arrow - shows state velocity */}
-      {DEBUG_CONFIG.showVelocityVector && stateSpeed > 5 && (
+      {/* Velocity vector arrow - car.velocity IS the true velocity */}
+      {DEBUG_CONFIG.showVelocityVector && speed > 0.5 && (
         <line
           x1={0}
           y1={0}
-          x2={velocity.x * 0.8}
-          y2={velocity.y * 0.8}
-          stroke="#00ffff"
-          strokeWidth={2}
-          markerEnd="url(#arrowhead-cyan)"
-        />
-      )}
-
-      {/* Real velocity vector - shows actual movement (green, scaled for visibility) */}
-      {DEBUG_CONFIG.showVelocityVector && realSpeed > 0.5 && (
-        <line
-          x1={0}
-          y1={0}
-          x2={realVel.x * 3}
-          y2={realVel.y * 3}
+          x2={vel.x * 3}
+          y2={vel.y * 3}
           stroke="#00ff00"
           strokeWidth={3}
           markerEnd="url(#arrowhead-green)"
