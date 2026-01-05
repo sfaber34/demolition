@@ -156,7 +156,7 @@ export const CAR_CONFIG = {
 export const PHYSICS_CONFIG = {
   friction: 0.975,
   angularFriction: 0.88,
-  bounceRestitution: 0.3,
+  bounceRestitution: 0.5, // Increased for bouncier wall hits
   spinOutThreshold: 0.45,
   collisionPushForce: 0.6,
 };

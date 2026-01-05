@@ -324,43 +324,75 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
   ): { damageA: number; damageB: number } {
     const { carA, carB, normal, penetration, impactSpeed, damageImpactSpeed } = collision;
 
-    // Separate cars
-    const separation = vec.mul(normal, penetration / 2 + 2);
-    carA.position = vec.sub(carA.position, separation);
-    carB.position = vec.add(carB.position, separation);
-
     // Get STATE speeds (velocity magnitude, NOT actual movement!)
     // In a stalemate, these can be high even though cars aren't moving
     const stateSpeedA = vec.length(carA.velocity);
     const stateSpeedB = vec.length(carB.velocity);
 
+    // ============ MOMENTUM-BASED SEPARATION ============
+    // Cars with more momentum "own" less of the penetration correction.
+    // A fast car hitting a stationary car should push the stationary one more.
+    const momentumA = stateSpeedA + 0.1; // avoid division by zero
+    const momentumB = stateSpeedB + 0.1;
+    const totalMomentum = momentumA + momentumB;
+    // Inverse ratio: fast car gets pushed LESS, slow car gets pushed MORE
+    const separationRatioA = momentumB / totalMomentum;
+    const separationRatioB = momentumA / totalMomentum;
+
+    const separationTotal = penetration + 2; // extra buffer to prevent re-collision
+    carA.position = vec.sub(carA.position, vec.mul(normal, separationTotal * separationRatioA));
+    carB.position = vec.add(carB.position, vec.mul(normal, separationTotal * separationRatioB));
+
+    // ============ MOMENTUM-BASED IMPULSE PHYSICS ============
     // Calculate relative velocity along collision normal
     const relVel = vec.sub(carA.velocity, carB.velocity);
     const velAlongNormal = vec.dot(relVel, normal);
 
-    if (velAlongNormal < 0) {
-      const restitution = PHYSICS_CONFIG.bounceRestitution;
-      const impulseMag = (-(1 + restitution) * velAlongNormal) / 2;
-      const impulseVec = vec.mul(normal, impulseMag);
+    // Only apply impulse if cars are closing (moving toward each other)
+    if (velAlongNormal > 0) {
+      // Low restitution - cars are heavy metal, not rubber balls
+      const restitution = 0.25;
 
-      carA.velocity = vec.add(carA.velocity, impulseVec);
-      carB.velocity = vec.sub(carB.velocity, impulseVec);
+      // ============ MASS-WEIGHTED IMPULSE ============
+      // All cars have similar mass - speed difference creates momentum difference
+      // but we want grounded physics, not pinball
+      const baseMass = 2.0;
+      const massA = baseMass + stateSpeedA * 0.15;
+      const massB = baseMass + stateSpeedB * 0.15;
+      const invMassA = 1 / massA;
+      const invMassB = 1 / massB;
 
-      // Momentum transfer
-      // Note: Max achievable speed is ~10-15, so use proportional thresholds
-      if (stateSpeedA > stateSpeedB + 3) {
-        const pushStrength = (stateSpeedA - stateSpeedB) * 0.4;
-        const pushDir = vec.normalize(carA.velocity);
-        carB.velocity = vec.add(carB.velocity, vec.mul(pushDir, pushStrength));
-        carA.velocity = vec.mul(carA.velocity, 0.7);
-      } else if (stateSpeedB > stateSpeedA + 3) {
-        const pushStrength = (stateSpeedB - stateSpeedA) * 0.4;
-        const pushDir = vec.normalize(carB.velocity);
-        carA.velocity = vec.add(carA.velocity, vec.mul(pushDir, pushStrength));
-        carB.velocity = vec.mul(carB.velocity, 0.7);
-      } else {
-        carA.velocity = vec.mul(carA.velocity, 0.8);
-        carB.velocity = vec.mul(carB.velocity, 0.8);
+      // Impulse formula: j = -(1+e) * Vrel·n / (1/mA + 1/mB)
+      const impulseMag = (-(1 + restitution) * velAlongNormal) / (invMassA + invMassB);
+
+      // Apply impulse - lighter car (less momentum) receives MORE velocity change
+      const impulseA = vec.mul(normal, impulseMag * invMassA);
+      const impulseB = vec.mul(normal, impulseMag * invMassB);
+
+      carA.velocity = vec.add(carA.velocity, impulseA);
+      carB.velocity = vec.sub(carB.velocity, impulseB);
+
+      // ============ POST-COLLISION DAMPING ============
+      // Heavy cars lose energy in collisions - apply damping to both
+      // This prevents the "ice skating" effect
+      const collisionDamping = 0.7; // Lose 30% velocity on impact
+      carA.velocity = vec.mul(carA.velocity, collisionDamping);
+      carB.velocity = vec.mul(carB.velocity, collisionDamping);
+
+      // ============ MOMENTUM TRANSFER ============
+      // Faster car pushes slower car, but modestly
+      const speedDiff = stateSpeedA - stateSpeedB;
+      if (speedDiff > 3) {
+        // Car A is faster - B gets pushed along normal
+        const pushStrength = Math.min(speedDiff * 0.08, 1.5); // Capped push
+        carB.velocity = vec.add(carB.velocity, vec.mul(normal, pushStrength));
+        // Attacker loses some momentum
+        carA.velocity = vec.mul(carA.velocity, 0.85);
+      } else if (speedDiff < -3) {
+        // Car B is faster - A gets pushed
+        const pushStrength = Math.min(Math.abs(speedDiff) * 0.08, 1.5);
+        carA.velocity = vec.sub(carA.velocity, vec.mul(normal, pushStrength));
+        carB.velocity = vec.mul(carB.velocity, 0.85);
       }
     }
 
