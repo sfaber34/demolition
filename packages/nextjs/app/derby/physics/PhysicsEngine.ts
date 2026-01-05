@@ -287,29 +287,22 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
 
     // Calculate impact speed for physics and damage
     //
-    // IMPORTANT: car.velocity is the PHYSICS STATE velocity, NOT actual movement!
-    // In a stalemate, throttle keeps adding to velocity even though cars are blocked.
-    // So we need TWO different velocity concepts:
-    // 1. stateVelocity (car.velocity) - used for physics impulse calculations
-    // 2. actualMovement (position - lastPosition) - used for damage eligibility
-    //
+    // For physics (impulses/bouncing): use state velocity
     const relVel = vec.sub(carA.velocity, carB.velocity);
     const velAlongNormal = vec.dot(relVel, collisionNormal);
-    // velAlongNormal > 0 means cars have velocity vectors CLOSING (A approaching B along normal)
-    // velAlongNormal < 0 means velocity vectors are SEPARATING
-    // Note: This can be positive in a stalemate due to throttle!
     const closingStateVelocity = velAlongNormal > 0 ? velAlongNormal : 0;
     const stateSpeedA = vec.length(carA.velocity);
     const stateSpeedB = vec.length(carB.velocity);
     const combinedStateSpeed = (stateSpeedA + stateSpeedB) * 0.5;
-
-    // For physics resolution (impulses/bouncing), use state velocity
     const impactSpeed = Math.max(closingStateVelocity, combinedStateSpeed);
 
-    // For DAMAGE calculation, we'll use closingStateVelocity as a baseline,
-    // but the actual damage eligibility check in resolveCarCollision uses
-    // actual movement (position - lastPosition) to filter out stalemates.
-    const damageImpactSpeed = closingStateVelocity;
+    // For DAMAGE: use ACTUAL closing rate based on position change
+    // This prevents damage during grinding (cars pushing but not actually closing)
+    // prevFrameRealVelocity captures actual movement from last frame
+    const actualRelVel = vec.sub(carA.prevFrameRealVelocity, carB.prevFrameRealVelocity);
+    const actualClosingRate = vec.dot(actualRelVel, collisionNormal);
+    // Only count as damage-worthy if cars were ACTUALLY closing (not just in contact)
+    const damageImpactSpeed = actualClosingRate > 1 ? actualClosingRate : 0;
 
     const contactPoint = vec.lerp(carA.position, carB.position, 0.5);
 
