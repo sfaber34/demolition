@@ -97,9 +97,9 @@ export function getSpeedColor(speed: number, isRealSpeed: boolean = true): strin
     if (speed > 2) return "#ffff44"; // Medium - yellow
     return "#aaaaaa"; // Slow - gray
   } else {
-    // State speed uses larger values
-    if (speed > 80) return "#44ff44";
-    if (speed > 40) return "#ffff44";
-    return "#aaaaaa";
+    // State speed - max achievable is ~10-15 due to friction physics
+    if (speed > 8) return "#44ff44"; // Fast - green
+    if (speed > 4) return "#ffff44"; // Medium - yellow
+    return "#aaaaaa"; // Slow - gray
   }
 }

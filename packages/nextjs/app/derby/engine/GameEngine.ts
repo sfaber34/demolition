@@ -55,7 +55,7 @@ function createCar(name: string, color: string, position: Vector2D, rotation: nu
     width: CAR_CONFIG.width,
     height: CAR_CONFIG.height,
     acceleration: 0.35 * accelVariation,
-    maxSpeed: 140,
+    maxSpeed: 15, // Actual achievable max with friction physics is ~10-15
     cornering: 1.0 * corneringVariation,
     traction: 0.75 * tractionVariation,
     input: { throttle: 0, steer: 0 },

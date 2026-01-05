@@ -170,8 +170,9 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     car.velocity = vec.add(vec.mul(forward, forwardSpeed), vec.mul(right, newLateralSpeed));
 
     // Check for spin-out
+    // Note: Max achievable speed is ~10-15 due to friction, so threshold must be proportional
     const speed = vec.length(car.velocity);
-    if (Math.abs(car.angularVelocity) > PHYSICS_CONFIG.spinOutThreshold && speed > 50) {
+    if (Math.abs(car.angularVelocity) > PHYSICS_CONFIG.spinOutThreshold && speed > 6) {
       car.velocity = vec.mul(car.velocity, 0.98);
     }
 
@@ -277,12 +278,13 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       carB.velocity = vec.sub(carB.velocity, impulseVec);
 
       // Momentum transfer
-      if (stateSpeedA > stateSpeedB + 20) {
+      // Note: Max achievable speed is ~10-15, so use proportional thresholds
+      if (stateSpeedA > stateSpeedB + 3) {
         const pushStrength = (stateSpeedA - stateSpeedB) * 0.4;
         const pushDir = vec.normalize(carA.velocity);
         carB.velocity = vec.add(carB.velocity, vec.mul(pushDir, pushStrength));
         carA.velocity = vec.mul(carA.velocity, 0.7);
-      } else if (stateSpeedB > stateSpeedA + 20) {
+      } else if (stateSpeedB > stateSpeedA + 3) {
         const pushStrength = (stateSpeedB - stateSpeedA) * 0.4;
         const pushDir = vec.normalize(carB.velocity);
         carA.velocity = vec.add(carA.velocity, vec.mul(pushDir, pushStrength));
@@ -620,9 +622,10 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     // For low-speed "pushing into the wall" contacts, bouncing each frame causes visible jitter and can
     // prevent controllers from detecting stable wall contact. So we make low-speed contacts inelastic
     // (remove the normal component), and only allow bounce for genuinely high-speed impacts.
+    // Note: Max achievable speed is ~10-15, so threshold must be proportional
     const velAlongNormal = vec.dot(car.velocity, normal);
     if (velAlongNormal < 0) {
-      const BOUNCE_SPEED_THRESHOLD = 18;
+      const BOUNCE_SPEED_THRESHOLD = 6;
       const restitution = impactSpeed > BOUNCE_SPEED_THRESHOLD ? PHYSICS_CONFIG.bounceRestitution * 0.7 : 0;
       // Subtract the velocity component into the wall; with restitution=0 this is purely inelastic.
       car.velocity = vec.sub(car.velocity, vec.mul(normal, velAlongNormal * (1 + restitution)));

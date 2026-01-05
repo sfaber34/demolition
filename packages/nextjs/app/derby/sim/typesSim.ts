@@ -157,10 +157,12 @@ export const PHYSICS_CONFIG = {
   collisionPushForce: 0.6,
 };
 
+// Note: Max achievable car speed is ~10-15 due to friction physics
+// All speed thresholds must be proportional to this range
 export const AI_CONFIG = {
   seekDistance: 400,
   attackDistance: 450,
-  minAttackSpeed: 25,
+  minAttackSpeed: 6, // Lowered from 25 - cars max at ~10-15
   circleRadius: 180,
   disengageTime: 500,
   recoveryTime: 400,
@@ -172,7 +174,7 @@ export const AI_CONFIG = {
   lowHealthThreshold: 30,
   criticalHealthThreshold: 15,
   idealAttackDistance: 250,
-  minDamageSpeed: 20,
+  minDamageSpeed: 5, // Lowered from 20 - cars max at ~10-15
 };
 
 export const CAR_COLORS: Record<string, string> = {
