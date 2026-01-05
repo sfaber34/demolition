@@ -498,34 +498,6 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       return { damageA: 0, damageB: 0 };
     }
 
-    // State velocity check:
-    // If both cars have low state velocity (not pushing hard), skip damage.
-    // NOTE: This checks velocity magnitude, not actual movement!
-    // A car in a stalemate applying throttle will have HIGH state velocity.
-    const MIN_STATE_SPEED_FOR_DAMAGE = 6;
-    if (Math.max(stateSpeedA, stateSpeedB) < MIN_STATE_SPEED_FOR_DAMAGE) {
-      debugLog.log({
-        timestamp: nowMs,
-        gameTimeMs: nowMs,
-        type: "car_collision",
-        carA: makeSnapshot(carA, stateSpeedA),
-        carB: makeSnapshot(carB, stateSpeedB),
-        contactPoint: { x: collision.contactPoint.x, y: collision.contactPoint.y },
-        collisionNormal: { x: normal.x, y: normal.y },
-        penetration,
-        relativeVelocity: { x: relVelForLog.x, y: relVelForLog.y },
-        relativeImpact: collision.damageImpactSpeed,
-        combinedSpeed: impactSpeed,
-        damageImpactSpeed,
-        damageA: 0,
-        damageB: 0,
-        totalDamage: 0,
-        wasFiltered: true,
-        filterReason: `low state velocity (max ${Math.max(stateSpeedA, stateSpeedB).toFixed(1)} < ${MIN_STATE_SPEED_FOR_DAMAGE})`,
-      });
-      return { damageA: 0, damageB: 0 };
-    }
-
     // STALEMATE PROTECTION:
     // Check actual position movement, not just velocity. In a stalemate, cars apply throttle
     // (so velocity is non-zero) but don't actually move (position stays same).
@@ -557,11 +529,10 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
       return { damageA: 0, damageB: 0 };
     }
 
-    // Use PRE-COLLISION speeds for damage calculation
-    // stateSpeedA/B were captured at the start before collision resolution modified velocities
-    // damageImpactSpeed from collision object also uses pre-collision (prevFrameRealVelocity)
-    const actualSpeedA = stateSpeedA;
-    const actualSpeedB = stateSpeedB;
+    // Use REAL speeds for damage calculation (from actual position movement, not state velocity)
+    // prevFrameRealVelocity captures how much each car ACTUALLY moved last frame
+    const actualSpeedA = vec.length(carA.prevFrameRealVelocity);
+    const actualSpeedB = vec.length(carB.prevFrameRealVelocity);
 
     // Use damageImpactSpeed from collision - it's calculated from prevFrameRealVelocity
     // which captures actual movement before collision resolution modified anything
@@ -594,7 +565,7 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     // Damage scales with ACTUAL relative impact speed (not state velocity!)
     // Use actualDamageImpactSpeed which is based on true position movement
     // Scale formula to realistic max observed
-    const REALISTIC_MAX_IMPACT = 16;
+    const REALISTIC_MAX_IMPACT = 10;
     const speedFactor = Math.min(1, actualDamageImpactSpeed / REALISTIC_MAX_IMPACT);
     // At max impact (15): baseDamage = 15 * 2.0 * 0.94 = 28 total, split = 14 each (strong hit)
     // At typical impact (10): baseDamage = 10 * 2.0 * 0.625 = 12.5 total, split = 6 each (medium hit)
