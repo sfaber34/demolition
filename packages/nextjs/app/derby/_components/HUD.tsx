@@ -11,8 +11,6 @@ interface HUDProps {
 }
 
 export const HUD: React.FC<HUDProps> = memo(({ cars }) => {
-  const aliveCars = cars.filter(c => c.isAlive);
-
   return (
     <div className="w-full px-4 py-3 bg-gradient-to-b from-zinc-900 to-zinc-800 border-b-2 border-amber-900/50">
       <div className="flex justify-center gap-4 flex-wrap">
@@ -20,11 +18,6 @@ export const HUD: React.FC<HUDProps> = memo(({ cars }) => {
           <CarStatus key={car.id} car={car} isActive={car.isAlive} />
         ))}
       </div>
-      {aliveCars.length <= 1 && aliveCars.length > 0 && (
-        <div className="text-center mt-2 text-amber-400 font-bold animate-pulse">
-          {aliveCars[0].name} is the last one standing!
-        </div>
-      )}
     </div>
   );
 });
