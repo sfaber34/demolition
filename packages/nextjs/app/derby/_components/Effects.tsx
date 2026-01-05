@@ -196,7 +196,7 @@ export const CarEffects: React.FC<{ car: CarSim }> = ({ car }) => {
 export const DustCloud: React.FC<{ car: CarSim }> = ({ car }) => {
   if (!car.isAlive) return null;
 
-  // car.velocity IS the true velocity after physics correction
+  // car.velocity is the velocity
   const speed = getSpeed(car);
   if (speed < 2) return null;
 

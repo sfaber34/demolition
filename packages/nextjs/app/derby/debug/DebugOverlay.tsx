@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
+import { getCarForward, getCarWallDistance, getSpeed, getVelocity } from "../physics/PhysicsEngine";
 import { CarSim } from "../sim/typesSim";
 import { DEBUG_CONFIG } from "./debugConfig";
-import { getCarForward, getSpeed, getSpeedColor, getVelocity, getWallDistColor, getWallDistance } from "./debugUtils";
+import { getSpeedColor, getWallDistColor } from "./debugUtils";
 
 interface DebugOverlayProps {
   cars: CarSim[];
@@ -19,7 +20,7 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
   const lines: { text: string; color: string }[] = [];
 
   if (DEBUG_CONFIG.showWallDistance) {
-    const wallDist = getWallDistance(car);
+    const wallDist = getCarWallDistance(car);
     lines.push({
       text: `wall: ${Math.round(wallDist)}`,
       color: getWallDistColor(wallDist),
@@ -27,7 +28,7 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
   }
 
   if (DEBUG_CONFIG.showSpeed) {
-    // car.velocity IS the true velocity after physics correction
+    // car.velocity is the velocity
     const speed = getSpeed(car);
     lines.push({
       text: `spd: ${speed.toFixed(1)}`,

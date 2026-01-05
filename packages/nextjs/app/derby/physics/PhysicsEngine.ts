@@ -62,7 +62,7 @@ export function getVelocity(car: CarSim): Vector2D {
 
 // ============ Physics Interface ============
 
-export interface IPhysicsEngine {
+interface IPhysicsEngine {
   // Apply control inputs to car (throttle/steer → velocity/angular changes)
   applyControls(car: CarSim, input: CarInput, dtMs: number): void;
 
@@ -643,31 +643,22 @@ export function getCarCorners(car: CarSim): Vector2D[] {
   return localCorners.map(c => vec.add(car.position, vec.rotate(c, car.rotation)));
 }
 
-/** Get the front center position of a car */
-export function getCarFront(car: CarSim): Vector2D {
-  const forward = getCarForward(car);
-  return vec.add(car.position, vec.mul(forward, car.width / 2));
-}
-
 /** Get the rear center position of a car */
 export function getCarRear(car: CarSim): Vector2D {
   const forward = getCarForward(car);
   return vec.sub(car.position, vec.mul(forward, car.width / 2));
 }
 
-// ============ Arena Bounds Utilities ============
-// SINGLE SOURCE OF TRUTH for arena collision bounds
+// ============ Arena Bounds (internal) ============
 
-/** Inner bounds of the arena (where cars can move) */
-export const ARENA_INNER_BOUNDS = {
+const ARENA_INNER_BOUNDS = {
   left: ARENA_CONFIG.wallThickness,
   right: ARENA_CONFIG.width - ARENA_CONFIG.wallThickness,
   top: ARENA_CONFIG.wallThickness,
   bottom: ARENA_CONFIG.height - ARENA_CONFIG.wallThickness,
 };
 
-/** Distance from a point to the nearest wall (positive = inside arena) */
-export function pointToWallDistance(x: number, y: number): number {
+function pointToWallDistance(x: number, y: number): number {
   const dx = Math.min(x - ARENA_INNER_BOUNDS.left, ARENA_INNER_BOUNDS.right - x);
   const dy = Math.min(y - ARENA_INNER_BOUNDS.top, ARENA_INNER_BOUNDS.bottom - y);
   return Math.min(dx, dy);

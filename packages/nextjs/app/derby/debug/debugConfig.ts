@@ -5,11 +5,10 @@
  * What value to show in the HUD below health bars (replaces DMG when debug is on)
  * - 'dmg': Default damage dealt (production mode)
  * - 'wallDistance': Distance to nearest wall
- * - 'realVelocity': Actual movement speed (not state velocity)
- * - 'stateVelocity': Physics state velocity (for comparison)
+ * - 'speed': Current car speed
  * - 'throttle': Current throttle input
  */
-export type HudDebugValue = "dmg" | "wallDistance" | "realVelocity" | "stateVelocity" | "throttle";
+export type HudDebugValue = "dmg" | "wallDistance" | "speed" | "throttle";
 
 export const DEBUG_CONFIG = {
   // Master switch - set to false to disable all debug overlays

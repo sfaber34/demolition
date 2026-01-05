@@ -2,7 +2,8 @@
 
 import React from "react";
 import { DEBUG_CONFIG, HudDebugValue } from "../debug/debugConfig";
-import { getSpeed, getSpeedColor, getWallDistColor, getWallDistance } from "../debug/debugUtils";
+import { getSpeedColor, getWallDistColor } from "../debug/debugUtils";
+import { getCarWallDistance, getSpeed } from "../physics/PhysicsEngine";
 import { CarSim } from "../sim/typesSim";
 
 interface HUDProps {
@@ -40,16 +41,14 @@ interface CarStatusProps {
 function getDebugDisplay(car: CarSim, debugValue: HudDebugValue): { label: string; value: string; color: string } {
   switch (debugValue) {
     case "wallDistance": {
-      const dist = getWallDistance(car);
+      const dist = getCarWallDistance(car);
       return {
         label: "WALL:",
         value: Math.round(dist).toString(),
         color: getWallDistColor(dist),
       };
     }
-    case "realVelocity":
-    case "stateVelocity": {
-      // Both are now the same - car.velocity IS the true velocity
+    case "speed": {
       const speed = getSpeed(car);
       return {
         label: "SPD:",
