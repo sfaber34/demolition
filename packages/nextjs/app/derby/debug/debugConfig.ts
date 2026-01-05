@@ -28,11 +28,11 @@ export const AI_TEST_CONFIG: { forceMode: AiForceMode } = {
 
 export const DEBUG_CONFIG = {
   // Master switch - set to false to disable all debug overlays
-  enabled: false,
+  enabled: true,
 
   // HUD debug display - what to show in place of DMG in the HUD
   // Set to 'dmg' for normal production display
-  hudDebugValue: "dmg" as HudDebugValue,
+  hudDebugValue: "wallDistance" as HudDebugValue,
 
   // Individual overlays (only active when enabled=true)
   showWallDistance: false, // Distance to nearest wall (in-game overlay)

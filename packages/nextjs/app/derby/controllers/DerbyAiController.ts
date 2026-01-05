@@ -1,5 +1,5 @@
 import { AI_TEST_CONFIG } from "../debug/debugConfig";
-import { getCarRear, vec } from "../physics/PhysicsEngine";
+import { getCarCorners, getCarRear, vec } from "../physics/PhysicsEngine";
 import type { AIBehavior, CarInput, CarSim, Vector2D, WorldSim } from "../sim/typesSim";
 import { AI_CONFIG, ARENA_CONFIG } from "../sim/typesSim";
 import { aiView, findNearestEnemy } from "./aiHelper";
@@ -77,6 +77,44 @@ function distance(a: Vector2D, b: Vector2D): number {
   return vec.distance(a, b);
 }
 
+function getNearestWallNormalForCar(car: CarSim): Vector2D {
+  // Normal points inward (toward arena center), and we compute it from corners
+  // so it matches how `getCarWallDistance()` is derived.
+  const left = ARENA_CONFIG.wallThickness;
+  const right = ARENA_CONFIG.width - ARENA_CONFIG.wallThickness;
+  const top = ARENA_CONFIG.wallThickness;
+  const bottom = ARENA_CONFIG.height - ARENA_CONFIG.wallThickness;
+
+  let bestDist = Infinity;
+  let bestNormal: Vector2D = { x: 0, y: 0 };
+
+  for (const c of getCarCorners(car)) {
+    // Distances to each inner wall from this corner
+    const dLeft = c.x - left;
+    if (dLeft < bestDist) {
+      bestDist = dLeft;
+      bestNormal = { x: 1, y: 0 };
+    }
+    const dRight = right - c.x;
+    if (dRight < bestDist) {
+      bestDist = dRight;
+      bestNormal = { x: -1, y: 0 };
+    }
+    const dTop = c.y - top;
+    if (dTop < bestDist) {
+      bestDist = dTop;
+      bestNormal = { x: 0, y: 1 };
+    }
+    const dBottom = bottom - c.y;
+    if (dBottom < bestDist) {
+      bestDist = dBottom;
+      bestNormal = { x: 0, y: -1 };
+    }
+  }
+
+  return bestNormal;
+}
+
 export class DerbyAiController implements CarController {
   private controlledCars: ControlledCars;
   private memoryByCarId: Map<string, CarMemory> = new Map();
@@ -144,6 +182,19 @@ export class DerbyAiController implements CarController {
         mem.wallAvoidUntilMs = Math.max(mem.wallAvoidUntilMs, nowMs + 250);
       }
 
+      // --- Wall "head-on" detection: close + pointing into the wall ---
+      // If we're close and our forward vector points OUT of the arena (into wall),
+      // do a short reverse+turn to get unstuck.
+      if (me.wallDistance < 24) {
+        const wallNormal = getNearestWallNormalForCar(car);
+        const facingIntoWall = vec.dot(me.forward, wallNormal) < -0.35;
+        const lowSpeed = me.speed < 2.2;
+        if (facingIntoWall && (lowSpeed || mem.stuckForMs > 200)) {
+          mem.recoverUntilMs = Math.max(mem.recoverUntilMs, nowMs + 520);
+          mem.wallAvoidUntilMs = Math.max(mem.wallAvoidUntilMs, nowMs + 520);
+        }
+      }
+
       // --- Recover if pinned/stuck near wall ---
       const isStuckNearWall = mem.stuckForMs > 500 && me.wallDistance < 35;
       if (isStuckNearWall) {
@@ -185,8 +236,23 @@ export class DerbyAiController implements CarController {
       let chosenBehavior: AIBehavior = car.aiState;
       let input: CarInput = { throttle: 0.9, steer: 0 };
 
-      // 1) Hard override: wall avoidance (drive toward center with reduced throttle)
-      if (mem.wallAvoidUntilMs > nowMs) {
+      // 1) Recovery should override wall-avoid; wall-avoid is not enough when steer effectiveness is ~0 at low speed.
+      if (mem.recoverUntilMs > nowMs) {
+        chosenBehavior = "repositioning";
+        // Short scripted unstick: reverse while turning, then surge forward.
+        const phase = mem.recoverUntilMs - nowMs > 220 ? "reverse" : "forward";
+        // Prefer turning "away" from nearest wall so we don't reverse into a corner.
+        const wallNormal = getNearestWallNormalForCar(car);
+        const side = vec.dot(me.right, wallNormal); // + => wallNormal is to our right (turn left)
+        const preferredTurnDir = side > 0 ? -1 : 1;
+        const jitter = stableRand01(`${car.id}:recover`) > 0.5 ? 1 : -1;
+        const turnDir = preferredTurnDir * jitter;
+        input = {
+          throttle: phase === "reverse" ? -1 : 1.2,
+          steer: phase === "reverse" ? turnDir : -turnDir * 0.6,
+        };
+      } else if (mem.wallAvoidUntilMs > nowMs) {
+        // 2) Wall avoidance (drive toward center with reduced throttle)
         const centerX = ARENA_CONFIG.width / 2;
         const centerY = ARENA_CONFIG.height / 2;
         const angleToCenter = me.angleToTarget(centerX, centerY);
@@ -198,15 +264,7 @@ export class DerbyAiController implements CarController {
       } else if (mode === "repositioning") {
         // 2) Recover / evade
         chosenBehavior = "repositioning";
-        if (mem.recoverUntilMs > nowMs) {
-          // Short scripted unstick: reverse while turning, then surge forward.
-          const phase = mem.recoverUntilMs - nowMs > 220 ? "reverse" : "forward";
-          const turnDir = stableRand01(`${car.id}:recover`) > 0.5 ? 1 : -1;
-          input = {
-            throttle: phase === "reverse" ? -1 : 1.2,
-            steer: phase === "reverse" ? turnDir : -turnDir * 0.6,
-          };
-        } else if (threat) {
+        if (threat) {
           // Dodge laterally away from the threat.
           const threatAngle = me.angleTo(threat);
           const dodgeDir = threatAngle > 0 ? -1 : 1; // threat on right -> go left
