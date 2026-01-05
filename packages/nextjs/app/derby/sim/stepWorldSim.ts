@@ -54,8 +54,10 @@ export function stepWorldSim(world: WorldSim, dtMs: number): SimEvent[] {
     physicsEngine.integrateCar(car, dtMs);
 
     // Check for tire mark emission (high speed + turning)
-    const speed = vec.length(car.velocity);
-    if (speed > 80 && Math.abs(car.angularVelocity) > 0.05) {
+    // Use actual movement speed, not state velocity
+    const actualSpeed = vec.distance(car.position, car.lastPosition);
+    // Scale threshold down since actual movement per frame is smaller than state velocity
+    if (actualSpeed > 4 && Math.abs(car.angularVelocity) > 0.05) {
       // Deterministic: emit based on state, not random
       // We use a simple modulo check on position for determinism
       const posHash = Math.floor(car.position.x * 0.1) + Math.floor(car.position.y * 0.1);

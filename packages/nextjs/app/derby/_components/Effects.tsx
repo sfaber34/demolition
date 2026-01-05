@@ -195,10 +195,15 @@ export const CarEffects: React.FC<{ car: CarSim }> = ({ car }) => {
 export const DustCloud: React.FC<{ car: CarSim }> = ({ car }) => {
   if (!car.isAlive) return null;
 
-  const speed = Math.sqrt(car.velocity.x * car.velocity.x + car.velocity.y * car.velocity.y);
-  if (speed < 30) return null;
+  // Use ACTUAL movement speed, not state velocity
+  // State velocity can be high when pushing against something but not actually moving
+  const dx = car.position.x - car.lastPosition.x;
+  const dy = car.position.y - car.lastPosition.y;
+  const actualSpeed = Math.sqrt(dx * dx + dy * dy);
+  // Threshold scaled down since actual movement per frame is smaller
+  if (actualSpeed < 2) return null;
 
-  const intensity = Math.min(1, speed / 150);
+  const intensity = Math.min(1, actualSpeed / 8);
   const particleCount = Math.floor(intensity * 3);
 
   // Calculate rear position

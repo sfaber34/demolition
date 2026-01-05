@@ -637,10 +637,14 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     car.angularVelocity += clampedChange;
     car.angularVelocity *= 0.9; // Damping on wall hit
 
-    // Calculate wall damage
+    // Calculate wall damage using ACTUAL movement, not state velocity!
+    // State velocity can be high when pushing into wall, but actual movement is near zero.
+    const actualVel = vec.sub(car.position, car.lastPosition);
+    const actualImpactSpeed = Math.abs(vec.dot(actualVel, normal));
+
     let damage = 0;
-    if (impactSpeed > CAR_CONFIG.minDamageSpeed * 0.5) {
-      damage = impactSpeed * CAR_CONFIG.wallDamageMultiplier;
+    if (actualImpactSpeed > CAR_CONFIG.minDamageSpeed * 0.5) {
+      damage = actualImpactSpeed * CAR_CONFIG.wallDamageMultiplier;
     }
 
     return damage;
@@ -649,16 +653,21 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
   isCarPinned(car: CarSim, cars: CarSim[], wallCollision: WallCollision | null): boolean {
     if (!wallCollision) return false;
 
-    const speed = vec.length(car.velocity);
-    if (speed > 20) return false;
+    // Use ACTUAL movement speed, not state velocity
+    // A car pressing into a wall has high state velocity but low actual movement
+    const actualMovement = vec.distance(car.position, car.lastPosition);
+    if (actualMovement > 3) return false; // Car is actually moving, not pinned
 
     for (const other of cars) {
       if (other.id === car.id || !other.isAlive) continue;
       const dist = vec.distance(car.position, other.position);
       if (dist < car.width + other.width) {
+        // Check if other car is actually moving towards this car (using actual movement)
+        const otherActualVel = vec.sub(other.position, other.lastPosition);
         const towardsCar = vec.normalize(vec.sub(car.position, other.position));
-        const pushingTowards = vec.dot(other.velocity, towardsCar);
-        if (pushingTowards > 20) {
+        const pushingTowards = vec.dot(otherActualVel, towardsCar);
+        // Lower threshold since actual movement is smaller than state velocity
+        if (pushingTowards > 2) {
           return true;
         }
       }
