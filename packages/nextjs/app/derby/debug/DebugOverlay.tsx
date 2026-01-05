@@ -1,89 +1,25 @@
 "use client";
 
 import React from "react";
-import { vec } from "../physics/PhysicsEngine";
-import { ARENA_CONFIG, CarSim } from "../sim/typesSim";
+import { CarSim } from "../sim/typesSim";
 import { DEBUG_CONFIG } from "./debugConfig";
+import { getRealSpeed, getSpeedColor, getStateSpeed, getWallDistColor, getWallDistance } from "./debugUtils";
 
 interface DebugOverlayProps {
   cars: CarSim[];
 }
 
-// Arena inner bounds (same as AI uses)
-const innerLeft = ARENA_CONFIG.wallThickness;
-const innerRight = ARENA_CONFIG.width - ARENA_CONFIG.wallThickness;
-const innerTop = ARENA_CONFIG.wallThickness;
-const innerBottom = ARENA_CONFIG.height - ARENA_CONFIG.wallThickness;
-
 /**
- * Get the 4 corners of a car given its center position, rotation, and dimensions
- */
-function getCarCorners(
-  x: number,
-  y: number,
-  rotation: number,
-  carWidth: number,
-  carHeight: number,
-): { x: number; y: number }[] {
-  const halfW = carWidth / 2;
-  const halfH = carHeight / 2;
-  const corners = [
-    { x: halfW, y: -halfH }, // front-right
-    { x: halfW, y: halfH }, // front-left
-    { x: -halfW, y: halfH }, // back-left
-    { x: -halfW, y: -halfH }, // back-right
-  ];
-  return corners.map(c => vec.add({ x, y }, vec.rotate(c, rotation)));
-}
-
-/**
- * Distance from a single point to the nearest wall
- */
-function pointToWallDist(px: number, py: number): number {
-  const dx = Math.min(px - innerLeft, innerRight - px);
-  const dy = Math.min(py - innerTop, innerBottom - py);
-  return Math.min(dx, dy);
-}
-
-/**
- * Calculate distance from a car's nearest CORNER to the nearest wall.
- * This matches how the physics engine and AI do wall collision detection.
- */
-function distToWall(x: number, y: number, rotation: number, carWidth: number, carHeight: number): number {
-  const corners = getCarCorners(x, y, rotation, carWidth, carHeight);
-  let minDist = Infinity;
-  for (const corner of corners) {
-    const d = pointToWallDist(corner.x, corner.y);
-    if (d < minDist) minDist = d;
-  }
-  return minDist;
-}
-
-/**
- * Get color based on wall distance (green=safe, yellow=caution, red=danger)
- * NOTE: Keep these tiers in sync with the game’s wall-safety heuristics.
- */
-function getWallDistColor(dist: number): string {
-  if (dist < 10) return "#ff4444"; // Critical - red (almost touching)
-  if (dist < 35) return "#ffaa00"; // Danger - orange
-  if (dist < 65) return "#ffff44"; // Caution - yellow
-  return "#44ff44"; // Safe - green
-}
-
-/**
- * Debug overlay for a single car
+ * Debug overlay for a single car (rendered in SVG on the arena)
  */
 const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
-  const { position, velocity, rotation, name, width, height } = car;
-
-  // Calculate values we might display
-  const wallDist = distToWall(position.x, position.y, rotation, width, height);
-  const speed = vec.length(velocity);
+  const { position, velocity, rotation } = car;
 
   // Build array of text lines to display
   const lines: { text: string; color: string }[] = [];
 
   if (DEBUG_CONFIG.showWallDistance) {
+    const wallDist = getWallDistance(car);
     lines.push({
       text: `wall: ${Math.round(wallDist)}`,
       color: getWallDistColor(wallDist),
@@ -91,9 +27,12 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
   }
 
   if (DEBUG_CONFIG.showSpeed) {
+    // Use real speed (actual movement) for display
+    const realSpeed = getRealSpeed(car);
+    const stateSpeed = getStateSpeed(car);
     lines.push({
-      text: `spd: ${Math.round(speed)}`,
-      color: speed > 80 ? "#44ff44" : speed > 40 ? "#ffff44" : "#aaaaaa",
+      text: `spd: ${realSpeed.toFixed(1)} (${Math.round(stateSpeed)})`,
+      color: getSpeedColor(realSpeed, true),
     });
   }
 
@@ -107,13 +46,17 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
 
   if (DEBUG_CONFIG.showCarId) {
     lines.push({
-      text: name,
+      text: car.name,
       color: "#ffffff",
     });
   }
 
   // Starting Y offset above car
   const textStartY = -car.height / 2 - 8 - lines.length * 12;
+
+  // Calculate real speed for velocity vector display
+  const realSpeed = getRealSpeed(car);
+  const stateSpeed = getStateSpeed(car);
 
   return (
     <g transform={`translate(${position.x}, ${position.y})`}>
@@ -137,8 +80,8 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
         </text>
       ))}
 
-      {/* Velocity vector arrow */}
-      {DEBUG_CONFIG.showVelocityVector && speed > 5 && (
+      {/* Velocity vector arrow - shows state velocity */}
+      {DEBUG_CONFIG.showVelocityVector && stateSpeed > 5 && (
         <line
           x1={0}
           y1={0}
@@ -147,6 +90,19 @@ const CarDebugInfo: React.FC<{ car: CarSim }> = ({ car }) => {
           stroke="#00ffff"
           strokeWidth={2}
           markerEnd="url(#arrowhead-cyan)"
+        />
+      )}
+
+      {/* Real velocity vector - shows actual movement (green, smaller scale) */}
+      {DEBUG_CONFIG.showVelocityVector && realSpeed > 0.5 && (
+        <line
+          x1={0}
+          y1={0}
+          x2={(car.position.x - car.lastPosition.x) * 8}
+          y2={(car.position.y - car.lastPosition.y) * 8}
+          stroke="#00ff00"
+          strokeWidth={3}
+          markerEnd="url(#arrowhead-green)"
         />
       )}
 
@@ -194,6 +150,9 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({ cars }) => {
       <defs>
         <marker id="arrowhead-cyan" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
           <polygon points="0 0, 6 3, 0 6" fill="#00ffff" />
+        </marker>
+        <marker id="arrowhead-green" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <polygon points="0 0, 6 3, 0 6" fill="#00ff00" />
         </marker>
         <marker id="arrowhead-magenta" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
           <polygon points="0 0, 6 3, 0 6" fill="#ff00ff" />

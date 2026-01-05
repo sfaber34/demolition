@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { DEBUG_CONFIG, HudDebugValue } from "../debug/debugConfig";
+import { getRealSpeed, getSpeedColor, getStateSpeed, getWallDistColor, getWallDistance } from "../debug/debugUtils";
 import { CarSim } from "../sim/typesSim";
 
 interface HUDProps {
@@ -31,6 +33,54 @@ interface CarStatusProps {
   isActive: boolean;
 }
 
+/**
+ * Get the debug value to display based on config.
+ * Returns { label, value, color } for rendering.
+ */
+function getDebugDisplay(car: CarSim, debugValue: HudDebugValue): { label: string; value: string; color: string } {
+  switch (debugValue) {
+    case "wallDistance": {
+      const dist = getWallDistance(car);
+      return {
+        label: "WALL:",
+        value: Math.round(dist).toString(),
+        color: getWallDistColor(dist),
+      };
+    }
+    case "realVelocity": {
+      const speed = getRealSpeed(car);
+      return {
+        label: "VEL:",
+        value: speed.toFixed(1),
+        color: getSpeedColor(speed, true),
+      };
+    }
+    case "stateVelocity": {
+      const speed = getStateSpeed(car);
+      return {
+        label: "STATE:",
+        value: Math.round(speed).toString(),
+        color: getSpeedColor(speed, false),
+      };
+    }
+    case "throttle": {
+      const throttle = car.input.throttle;
+      return {
+        label: "THR:",
+        value: throttle.toFixed(1),
+        color: throttle > 0 ? "#44ff44" : throttle < 0 ? "#ff4444" : "#aaaaaa",
+      };
+    }
+    case "dmg":
+    default:
+      return {
+        label: "DMG:",
+        value: Math.round(car.damageDealt).toString(),
+        color: "", // Use default styling
+      };
+  }
+}
+
 const CarStatus: React.FC<CarStatusProps> = ({ car, isActive }) => {
   const healthPercent = Math.max(0, (car.health / car.maxHealth) * 100);
 
@@ -40,6 +90,10 @@ const CarStatus: React.FC<CarStatusProps> = ({ car, isActive }) => {
     if (healthPercent > 30) return "bg-yellow-500";
     return "bg-red-500";
   };
+
+  // Get what to display below health bar
+  const showDebug = DEBUG_CONFIG.enabled && DEBUG_CONFIG.hudDebugValue !== "dmg";
+  const display = showDebug ? getDebugDisplay(car, DEBUG_CONFIG.hudDebugValue) : getDebugDisplay(car, "dmg");
 
   return (
     <div
@@ -75,10 +129,23 @@ const CarStatus: React.FC<CarStatusProps> = ({ car, isActive }) => {
       {/* Health percentage */}
       <div className="text-xs text-zinc-400 font-mono">{Math.round(healthPercent)}%</div>
 
-      {/* Damage dealt counter */}
+      {/* Debug value or Damage dealt counter */}
       <div className="flex items-center gap-1 mt-1">
-        <span className="text-xs text-orange-400">DMG:</span>
-        <span className="text-sm font-bold text-orange-300 font-mono">{Math.round(car.damageDealt)}</span>
+        {showDebug ? (
+          <>
+            <span className="text-xs" style={{ color: display.color || "#fb923c" }}>
+              {display.label}
+            </span>
+            <span className="text-sm font-bold font-mono" style={{ color: display.color || "#fdba74" }}>
+              {display.value}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-xs text-orange-400">{display.label}</span>
+            <span className="text-sm font-bold text-orange-300 font-mono">{display.value}</span>
+          </>
+        )}
       </div>
     </div>
   );
