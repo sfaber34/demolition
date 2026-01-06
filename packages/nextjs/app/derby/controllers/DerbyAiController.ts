@@ -32,6 +32,10 @@ interface CarMemory {
   contactForMs: number;
   contactLastDist: number | null;
   contactEscapeCooldownUntilMs: number;
+
+  // High-level "stance" (orbit vs strike) selection in auto mode
+  autoStance: "orbiting" | "striking";
+  autoStanceUntilMs: number;
 }
 
 function clamp(x: number, min: number, max: number): number {
@@ -186,6 +190,8 @@ export class DerbyAiController implements CarController {
 
   // Make starts look cooler: orbit briefly before engaging.
   private static readonly START_ORBIT_MS = 2000;
+  // Prevent rapid flip-flopping: once chosen, keep a stance for a while.
+  private static readonly AUTO_STANCE_MS = 5000;
 
   constructor(opts: { skipIndices?: number[]; onlyIndices?: number[] } = {}) {
     if (opts.onlyIndices && opts.onlyIndices.length > 0) {
@@ -217,6 +223,8 @@ export class DerbyAiController implements CarController {
       contactForMs: 0,
       contactLastDist: null,
       contactEscapeCooldownUntilMs: 0,
+      autoStance: "orbiting",
+      autoStanceUntilMs: 0,
     };
     this.memoryByCarId.set(car.id, created);
     return created;
@@ -353,6 +361,26 @@ export class DerbyAiController implements CarController {
       const forced = (AI_TEST_CONFIG.forceMode ?? "auto") as AiMode;
       const effectiveMode: AiMode = forced === "auto" ? "auto" : forced;
 
+      // --- Auto stance selection (orbit vs strike) ---
+      // First 2 seconds: always orbit (looks better).
+      // After that: each car randomly commits to orbiting or striking for ~5 seconds.
+      let autoStance: "orbiting" | "striking" = "orbiting";
+      if (effectiveMode === "auto") {
+        if (nowMs < DerbyAiController.START_ORBIT_MS) {
+          mem.autoStance = "orbiting";
+          mem.autoStanceUntilMs = DerbyAiController.START_ORBIT_MS;
+          autoStance = "orbiting";
+        } else {
+          if (nowMs >= mem.autoStanceUntilMs) {
+            const epoch = Math.floor((nowMs - DerbyAiController.START_ORBIT_MS) / DerbyAiController.AUTO_STANCE_MS);
+            const r = stableRand01(`${car.id}:${epoch}:autoStance`);
+            mem.autoStance = r < 0.5 ? "orbiting" : "striking";
+            mem.autoStanceUntilMs = DerbyAiController.START_ORBIT_MS + (epoch + 1) * DerbyAiController.AUTO_STANCE_MS;
+          }
+          autoStance = mem.autoStance;
+        }
+      }
+
       // --- Global safety: wall avoidance commit ---
       if (me.wallDistance < AI_CONFIG.wallAvoidDistance) {
         mem.wallAvoidUntilMs = Math.max(mem.wallAvoidUntilMs, nowMs + 250);
@@ -425,13 +453,10 @@ export class DerbyAiController implements CarController {
         }
       }
 
-      let chosenBehavior: AIBehavior = car.aiState;
       let input: CarInput = { throttle: 0.9, steer: 0 };
 
       // 1) Recovery should override wall-avoid; wall-avoid is not enough when steer effectiveness is ~0 at low speed.
       if (mem.recoverUntilMs > nowMs) {
-        // Keep reporting as "orbiting" even while escaping. We only expose 2 AI states now.
-        chosenBehavior = "orbiting";
         const wallNormal = mem.recoverWallNormal ?? getNearestWallNormalForCar(car);
         const escapeTarget = vec.add(car.position, vec.mul(wallNormal, 240));
         const escapeAngle = me.angleToTarget(escapeTarget.x, escapeTarget.y);
@@ -461,10 +486,8 @@ export class DerbyAiController implements CarController {
           throttle: me.speed > 7 ? 0.35 : 0.8,
           steer: steerTowardAngle(angleToCenter, 1.8),
         };
-        chosenBehavior = "orbiting";
       } else if (effectiveMode === "auto" && mem.evadeUntilMs > nowMs) {
-        // 2) Evade threats (still reported as "orbiting")
-        chosenBehavior = "orbiting";
+        // 2) Evade threats
         if (threat) {
           // Dodge laterally away from the threat.
           const threatAngle = me.angleTo(threat);
@@ -483,10 +506,10 @@ export class DerbyAiController implements CarController {
         // 3) Attack or wander
         const target = findNearestEnemy(car, world.cars);
 
-        const inOpeningOrbit = effectiveMode === "auto" && nowMs < DerbyAiController.START_ORBIT_MS;
-        if (!inOpeningOrbit && (effectiveMode === "striking" || (effectiveMode === "auto" && target))) {
+        const shouldStrike =
+          effectiveMode === "striking" || (effectiveMode === "auto" && autoStance === "striking" && !!target);
+        if (shouldStrike) {
           // Attack: aim for enemy rear + mild lead for side/rear damage and speed advantage.
-          chosenBehavior = "striking";
           const enemy = target ?? world.cars.find(c => c.id !== car.id && c.isAlive) ?? null;
           if (enemy) {
             const enemyRear = getCarRear(enemy);
@@ -510,7 +533,6 @@ export class DerbyAiController implements CarController {
           }
         } else {
           // Wander/orbit: follow a waypoint that drifts around center.
-          chosenBehavior = "orbiting";
           const needsNewWaypoint =
             !mem.waypoint || nowMs >= mem.nextWaypointAtMs || vec.distance(car.position, mem.waypoint) < 65;
 
@@ -531,7 +553,11 @@ export class DerbyAiController implements CarController {
         }
       }
 
-      car.aiState = chosenBehavior;
+      // Report "stance" as AI state so it persists for the configured window.
+      // Moment-to-moment actions (recovery front/rear, etc.) are exposed via aiDebug.
+      const reportedState: AIBehavior =
+        effectiveMode === "auto" ? autoStance : effectiveMode === "striking" ? "striking" : "orbiting";
+      car.aiState = reportedState;
       car.stateTimer += dtMs;
       car.input = clampInput(input);
       // HUD debug: expose front/rear wall distances and current recovery mode.

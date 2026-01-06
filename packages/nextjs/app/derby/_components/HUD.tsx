@@ -37,7 +37,8 @@ function getDebugDisplay(car: CarSim, debugValue: HudDebugValue): { label: strin
     case "wallDistance": {
       const front = car.aiDebug?.frontWallDist;
       const rear = car.aiDebug?.rearWallDist;
-      const mode = car.aiDebug?.recoverMode ?? null;
+      const recoverMode = car.aiDebug?.recoverMode ?? null;
+      const aiState = car.aiState;
 
       // If AI hasn't populated aiDebug yet, fall back to standard wall distance.
       if (front === undefined || rear === undefined) {
@@ -54,7 +55,7 @@ function getDebugDisplay(car: CarSim, debugValue: HudDebugValue): { label: strin
       const r = Math.max(0, Math.round(rear));
       return {
         label: "",
-        value: `F:${f}\nR:${r}\nM:${mode ?? "-"}`,
+        value: `F:${f}\nR:${r}\nM:${recoverMode ?? "-"}\nAI:${aiState}`,
         color: getWallDistColor(minDist),
       };
     }
