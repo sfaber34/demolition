@@ -100,7 +100,6 @@ const CarStatus: React.FC<CarStatusProps> = memo(({ car, isActive }) => {
         >
           {car.name}
         </span>
-        {!isActive && <span className="text-xs text-red-400 font-bold">WRECKED</span>}
       </div>
 
       {/* Health bar */}
