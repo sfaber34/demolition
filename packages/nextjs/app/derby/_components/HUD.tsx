@@ -2,8 +2,8 @@
 
 import React, { memo } from "react";
 import { DEBUG_CONFIG, HudDebugValue } from "../debug/debugConfig";
-import { getSpeedColor, getWallDistColor } from "../debug/debugUtils";
-import { getCarWallDistance, getSpeed } from "../physics/PhysicsEngine";
+import { getSpeedColor } from "../debug/debugUtils";
+import { getSpeed } from "../physics/PhysicsEngine";
 import { CarSim } from "../sim/typesSim";
 
 interface HUDProps {
@@ -35,28 +35,12 @@ interface CarStatusProps {
 function getDebugDisplay(car: CarSim, debugValue: HudDebugValue): { label: string; value: string; color: string } {
   switch (debugValue) {
     case "wallDistance": {
-      const front = car.aiDebug?.frontWallDist;
-      const rear = car.aiDebug?.rearWallDist;
-      const recoverMode = car.aiDebug?.recoverMode ?? null;
       const aiState = car.aiState;
 
-      // If AI hasn't populated aiDebug yet, fall back to standard wall distance.
-      if (front === undefined || rear === undefined) {
-        const dist = getCarWallDistance(car);
-        return {
-          label: "WALL:",
-          value: Math.round(dist).toString(),
-          color: getWallDistColor(dist),
-        };
-      }
-
-      const minDist = Math.min(front, rear);
-      const f = Math.max(0, Math.round(front));
-      const r = Math.max(0, Math.round(rear));
       return {
-        label: "",
-        value: `F:${f}\nR:${r}\nM:${recoverMode ?? "-"}\nAI:${aiState}`,
-        color: getWallDistColor(minDist),
+        label: "AI:",
+        value: aiState,
+        color: aiState === "orbiting" ? "#44ff44" : "#ff4444",
       };
     }
     case "speed": {
