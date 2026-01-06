@@ -113,21 +113,23 @@ export class GameEngine {
   private accumulator: number;
   private keyboardController: KeyboardController;
   private aiController: CarController;
+  private runSeed: number;
   /** Previous car states for render interpolation */
   private previousStates: Map<string, PreviousCarState> = new Map();
 
   // Default to 120Hz physics step. With time-step invariant damping, this improves visual smoothness
   // on high refresh displays without changing feel.
-  constructor(fixedDtMs: number = 8) {
+  constructor(fixedDtMs: number = 8, opts: { runSeed?: number } = {}) {
     this.fixedDtMs = fixedDtMs;
     this.accumulator = 0;
+    this.runSeed = opts.runSeed ?? 0;
     this.world = this.createInitialWorld();
     this.effects = createEmptyEffectsState();
     // Car 0 is red by default. Keep keyboard controller around for optional testing,
     // but by default we let AI drive all cars (including red).
     this.keyboardController = new KeyboardController(0);
     // AI drives all cars (0-3)
-    this.aiController = new DerbyAiController();
+    this.aiController = new DerbyAiController({ runSeed: this.runSeed });
     // Initialize previous states
     this.savePreviousStates();
   }
@@ -149,14 +151,17 @@ export class GameEngine {
   }
 
   /** Restart the game with fresh state */
-  restart(): void {
+  restart(runSeed?: number): void {
+    if (runSeed !== undefined) {
+      this.runSeed = runSeed;
+    }
     this.world = this.createInitialWorld();
     this.world.gamePhase = "playing";
     this.effects = createEmptyEffectsState();
     this.accumulator = 0;
     // Important: car IDs are re-used (carIdCounter reset) and gameTime rewinds to 0.
     // Controllers that keep per-car memory keyed by ID must be reset as well.
-    this.aiController = new DerbyAiController();
+    this.aiController = new DerbyAiController({ runSeed: this.runSeed });
     this.previousStates.clear();
     this.savePreviousStates();
   }

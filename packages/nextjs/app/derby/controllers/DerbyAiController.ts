@@ -197,6 +197,7 @@ export class DerbyAiController implements CarController {
   private controlledCars: ControlledCars;
   private memoryByCarId: Map<string, CarMemory> = new Map();
   private lastNowMs: number = 0;
+  private runSeed: number;
 
   // Make starts look cooler: orbit briefly before engaging.
   private static readonly START_ORBIT_TICKS = 250; // 2000ms / 8ms
@@ -204,12 +205,13 @@ export class DerbyAiController implements CarController {
   private static readonly AUTO_STANCE_TICKS = 625; // 5000ms / 8ms
   private static readonly WAYPOINT_REPICK_TICKS = 175; // 1400ms / 8ms
 
-  constructor(opts: { skipIndices?: number[]; onlyIndices?: number[] } = {}) {
+  constructor(opts: { skipIndices?: number[]; onlyIndices?: number[]; runSeed?: number } = {}) {
     if (opts.onlyIndices && opts.onlyIndices.length > 0) {
       this.controlledCars = { mode: "onlyIndices", onlyIndices: new Set(opts.onlyIndices) };
     } else {
       this.controlledCars = { mode: "skipIndices", skipIndices: new Set(opts.skipIndices ?? []) };
     }
+    this.runSeed = opts.runSeed ?? 0;
   }
 
   private shouldControlCarIndex(i: number): boolean {
@@ -246,7 +248,7 @@ export class DerbyAiController implements CarController {
 
   update(world: WorldSim, dtMs: number, nowMs: number): void {
     if (world.gamePhase !== "playing") return;
-    const runSeed = AI_TEST_CONFIG.runSeed ?? 0;
+    const runSeed = this.runSeed;
 
     // Defensive reset: on game restart the sim time rewinds to 0, but car IDs may be re-used.
     // If we don't clear, old "untilMs" timers/waypoints can remain active and cause bad start behavior

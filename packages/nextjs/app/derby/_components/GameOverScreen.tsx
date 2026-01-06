@@ -8,9 +8,18 @@ interface GameOverScreenProps {
   cars: CarSim[];
   gameTime: number;
   onRestart: () => void;
+  runSeed: number;
+  onRunSeedChange: (seed: number) => void;
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, cars, gameTime, onRestart }) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({
+  winner,
+  cars,
+  gameTime,
+  onRestart,
+  runSeed,
+  onRunSeedChange,
+}) => {
   // Sort cars by damage dealt for final standings
   const sortedCars = [...cars].sort((a, b) => b.damageDealt - a.damageDealt);
 
@@ -98,17 +107,28 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, cars, ga
       </div>
 
       {/* Play again button */}
-      <button
-        onClick={onRestart}
-        className="group px-10 py-4 bg-gradient-to-b from-green-600 to-green-800 hover:from-green-500 hover:to-green-700 text-white font-black text-xl uppercase tracking-widest rounded-lg border-4 border-green-900 shadow-[0_6px_0_#1a4d1a,0_8px_15px_rgba(0,0,0,0.5)] hover:shadow-[0_4px_0_#1a4d1a,0_6px_10px_rgba(0,0,0,0.5)] hover:translate-y-[2px] transition-all duration-100"
-      >
-        <span className="relative">
-          Play Again
-          <span className="absolute -right-6 top-1/2 -translate-y-1/2 text-yellow-300 group-hover:rotate-45 transition-transform">
-            ⟳
+      <div className="flex items-center gap-4 flex-wrap justify-center">
+        <label className="flex items-center gap-2 text-zinc-300 font-mono text-sm">
+          <span className="text-zinc-500">Run seed</span>
+          <input
+            type="number"
+            value={runSeed}
+            onChange={e => onRunSeedChange(Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 0)}
+            className="w-24 px-2 py-1 rounded-md bg-zinc-900/70 border border-zinc-700 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+        </label>
+        <button
+          onClick={onRestart}
+          className="group px-10 py-4 bg-gradient-to-b from-green-600 to-green-800 hover:from-green-500 hover:to-green-700 text-white font-black text-xl uppercase tracking-widest rounded-lg border-4 border-green-900 shadow-[0_6px_0_#1a4d1a,0_8px_15px_rgba(0,0,0,0.5)] hover:shadow-[0_4px_0_#1a4d1a,0_6px_10px_rgba(0,0,0,0.5)] hover:translate-y-[2px] transition-all duration-100"
+        >
+          <span className="relative">
+            Play Again
+            <span className="absolute -right-6 top-1/2 -translate-y-1/2 text-yellow-300 group-hover:rotate-45 transition-transform">
+              ⟳
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+      </div>
     </div>
   );
 };

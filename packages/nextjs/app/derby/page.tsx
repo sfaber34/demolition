@@ -23,9 +23,11 @@ export default function DerbyPage() {
   // Create engine once and store in ref
   const engineRef = useRef<GameEngine | null>(null);
 
+  const [runSeed, setRunSeed] = useState<number>(0);
+
   // Get initial snapshot for state
   const [gameSnapshot, setGameSnapshot] = useState<GameSnapshot>(() => {
-    const engine = new GameEngine(8);
+    const engine = new GameEngine(8, { runSeed: 0 });
     engineRef.current = engine;
     return engine.getSnapshot();
   });
@@ -75,6 +77,21 @@ export default function DerbyPage() {
     };
   }, [gameLoop]);
 
+  // If the user changes seed on the title screen, rebuild the engine so the very first run uses that seed.
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    if (engine.getPhase() !== "title") return;
+
+    engine.cleanup();
+    const newEngine = new GameEngine(8, { runSeed });
+    engineRef.current = newEngine;
+    setGameSnapshot(newEngine.getSnapshot());
+    lastTimeRef.current = 0;
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    animationRef.current = null;
+  }, [runSeed]);
+
   const handleStart = () => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -90,7 +107,7 @@ export default function DerbyPage() {
   const handleRestart = () => {
     const engine = engineRef.current;
     if (engine) {
-      engine.restart();
+      engine.restart(runSeed);
       setGameSnapshot(engine.getSnapshot());
       lastTimeRef.current = 0;
       if (animationRef.current) {
@@ -132,7 +149,9 @@ export default function DerbyPage() {
 
       {/* Main content */}
       <main className="w-full max-w-4xl flex flex-col items-center">
-        {gameSnapshot.gamePhase === "title" && <TitleScreen onStart={handleStart} />}
+        {gameSnapshot.gamePhase === "title" && (
+          <TitleScreen onStart={handleStart} runSeed={runSeed} onRunSeedChange={setRunSeed} />
+        )}
 
         {gameSnapshot.gamePhase === "gameover" && (
           <GameOverScreen
@@ -140,6 +159,8 @@ export default function DerbyPage() {
             cars={gameSnapshot.cars}
             gameTime={gameSnapshot.gameTime}
             onRestart={handleRestart}
+            runSeed={runSeed}
+            onRunSeedChange={setRunSeed}
           />
         )}
 
