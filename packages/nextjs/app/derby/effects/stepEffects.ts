@@ -4,44 +4,12 @@
 // Math.random() is used here for VFX variety (not in sim layer).
 import { vec } from "../physics/PhysicsEngine";
 import { CarDeathEvent, CarImpactEvent, CarSim, SimEvent, TireMarkEvent, WallImpactEvent } from "../sim/typesSim";
-import {
-  DamageNumber,
-  EFFECTS_CONFIG,
-  EffectsState,
-  Explosion,
-  ExplosionParticle,
-  Spark,
-  TireMark,
-} from "./effectsTypes";
+import { DamageNumber, EFFECTS_CONFIG, EffectsState, Spark, TireMark } from "./effectsTypes";
 
 let effectIdCounter = 0;
 const generateEffectId = () => `effect-${++effectIdCounter}`;
 
 // ============ Effect Creators ============
-
-function createExplosion(position: { x: number; y: number }): Explosion {
-  const particleCount = 20 + Math.floor(Math.random() * 15);
-  const particles: ExplosionParticle[] = [];
-
-  for (let i = 0; i < particleCount; i++) {
-    particles.push({
-      angle: (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.5,
-      distance: 60 + Math.random() * 40,
-      speed: 0.5 + Math.random() * 1,
-      size: 4 + Math.random() * 8,
-      color: EFFECTS_CONFIG.explosionColors[Math.floor(Math.random() * EFFECTS_CONFIG.explosionColors.length)],
-      rotation: Math.random() * 360,
-    });
-  }
-
-  return {
-    id: generateEffectId(),
-    position: { x: position.x, y: position.y },
-    particles,
-    ageMs: 0,
-    duration: EFFECTS_CONFIG.explosionDuration,
-  };
-}
 
 function createSparks(position: { x: number; y: number }, count: number): Spark[] {
   const sparks: Spark[] = [];
@@ -134,7 +102,10 @@ function handleWallImpact(event: WallImpactEvent, effects: EffectsState, getCarC
 }
 
 function handleCarDeath(event: CarDeathEvent, effects: EffectsState): void {
-  effects.explosions.push(createExplosion(event.position));
+  // Intentionally no "death explosion" here.
+  // Dead car VFX is handled by `CarEffects` (animated fire/smoke) so we don't double-render fire.
+  void event;
+  void effects;
 }
 
 function handleTireMark(event: TireMarkEvent, effects: EffectsState): void {
