@@ -1,5 +1,5 @@
 import { AI_TEST_CONFIG } from "../debug/debugConfig";
-import { getCarCorners, getCarRear, vec } from "../physics/PhysicsEngine";
+import { getCarCorners, getCarRear, physicsEngine, vec } from "../physics/PhysicsEngine";
 import type { AIBehavior, CarInput, CarSim, Vector2D, WorldSim } from "../sim/typesSim";
 import { AI_CONFIG, ARENA_CONFIG } from "../sim/typesSim";
 import { aiView, findNearestEnemy } from "./aiHelper";
@@ -26,6 +26,12 @@ interface CarMemory {
   // Stuck detection (controller-side; do not rely on sim writing lastPosition)
   lastPos: Vector2D | null;
   stuckForMs: number;
+
+  // Car-to-car "pinned" detection (when two cars are physically colliding for a while)
+  contactCarId: string | null;
+  contactForMs: number;
+  contactLastDist: number | null;
+  contactEscapeCooldownUntilMs: number;
 }
 
 function clamp(x: number, min: number, max: number): number {
@@ -204,6 +210,10 @@ export class DerbyAiController implements CarController {
       nextWaypointAtMs: 0,
       lastPos: null,
       stuckForMs: 0,
+      contactCarId: null,
+      contactForMs: 0,
+      contactLastDist: null,
+      contactEscapeCooldownUntilMs: 0,
     };
     this.memoryByCarId.set(car.id, created);
     return created;
@@ -242,6 +252,99 @@ export class DerbyAiController implements CarController {
         else mem.stuckForMs = 0;
       }
       mem.lastPos = { x: car.position.x, y: car.position.y };
+
+      // --- Car-to-car "pinned" detection: sustained collision + head-to-head pushing ---
+      // This addresses cases where two cars get locked pushing into each other and never separate.
+      // Important: we *cannot* rely only on SAT overlap (checkCarCollision), because the resolver adds a
+      // separation buffer (penetration + 2) which often means cars are "touching/pinned" but not overlapping.
+      // So we treat either SAT collision OR "very near" as contact.
+      let bestContact: { other: CarSim; normalFromMeToOther: Vector2D; dist: number; isOverlap: boolean } | null = null;
+      let bestOverlapPenetration = 0;
+      let bestDist = Infinity;
+      for (const other of world.cars) {
+        if (!other.isAlive || other.id === car.id) continue;
+
+        const toOtherRaw = vec.sub(other.position, car.position);
+        const dist = vec.length(toOtherRaw);
+        const toOther = dist > 0.0001 ? vec.mul(toOtherRaw, 1 / dist) : { x: 1, y: 0 };
+
+        // Approx "bumper distance": car width is the fore/aft length in this sim.
+        const contactDist = (car.width + other.width) * 0.5 + 8; // +epsilon for solver separation buffer
+
+        const col = physicsEngine.checkCarCollision(car, other);
+        const isOverlap = !!col;
+        const isNear = dist <= contactDist;
+        if (!isOverlap && !isNear) continue;
+
+        if (isOverlap) {
+          // Prefer real overlap contact if available; choose the deepest overlap
+          if (col.penetration > bestOverlapPenetration) {
+            bestOverlapPenetration = col.penetration;
+            bestContact = { other, normalFromMeToOther: col.normal, dist, isOverlap: true };
+          }
+        } else if (!bestContact || (!bestContact.isOverlap && dist < bestDist)) {
+          // Otherwise pick the nearest "near contact" candidate.
+          bestDist = dist;
+          bestContact = { other, normalFromMeToOther: toOther, dist, isOverlap: false };
+        }
+      }
+
+      if (bestContact) {
+        const other = bestContact.other;
+        if (mem.contactCarId === other.id) mem.contactForMs += dtMs;
+        else {
+          mem.contactCarId = other.id;
+          mem.contactForMs = 0;
+          mem.contactLastDist = null;
+        }
+
+        const otherView = aiView(other);
+        const toOther = vec.normalize(vec.sub(other.position, car.position));
+        const toMe = vec.mul(toOther, -1);
+
+        // "Car-to-car pinned" heuristics:
+        // We want to trigger escape in two common deadlocks:
+        // 1) Head-to-head shove (both facing each other)
+        // 2) Rear-end shove (we're pushing into someone stuck on a wall / another car)
+        //
+        // Important: we must NOT require the *other* car to be pushing, because the victim may be
+        // reversing (wall escape) or otherwise not applying forward throttle.
+        const facingEachOther = vec.dot(me.forward, toOther) > 0.55 && vec.dot(otherView.forward, toMe) > 0.55;
+        const iAmPushingIntoOther = car.input.throttle > 0.65 && vec.dot(me.forward, toOther) > 0.5;
+        const relSpeed = vec.length(vec.sub(car.velocity, other.velocity));
+        const lowRelativeMotion = relSpeed < 2.2 && me.speed < 3.8;
+
+        // "Not making progress" guard: if we're pushing but distance to the other isn't increasing, count it as stuck.
+        // This catches rear-ending a wall-stuck car where there is no overlap (solver separation) but still no progress.
+        const distNow = bestContact.dist;
+        const distDelta = mem.contactLastDist === null ? 0 : distNow - mem.contactLastDist;
+        mem.contactLastDist = distNow;
+        const notSeparating = distDelta < 0.15; // not opening the gap
+        const pinnedByContact = iAmPushingIntoOther && notSeparating;
+
+        const CONTACT_ESCAPE_MS = 500;
+        if (
+          mem.contactForMs >= CONTACT_ESCAPE_MS &&
+          nowMs >= mem.contactEscapeCooldownUntilMs &&
+          (facingEachOther || pinnedByContact) &&
+          lowRelativeMotion
+        ) {
+          // Escape direction: away from the other car.
+          // We can safely derive it from the collision normal (me -> other).
+          const away = vec.normalize(vec.mul(bestContact.normalFromMeToOther, -1));
+          mem.recoverMode = "front";
+          mem.recoverWallNormal = away; // reused as a generic "escape normal"
+          mem.recoverUntilMs = Math.max(mem.recoverUntilMs, nowMs + 650);
+          mem.wallAvoidUntilMs = Math.max(mem.wallAvoidUntilMs, nowMs + 350);
+          mem.contactEscapeCooldownUntilMs = nowMs + 1400;
+          // Reset contact accumulation so we don't immediately re-trigger.
+          mem.contactForMs = 0;
+        }
+      } else {
+        mem.contactCarId = null;
+        mem.contactForMs = 0;
+        mem.contactLastDist = null;
+      }
 
       // --- State forcing (for testing) ---
       const forced = (AI_TEST_CONFIG.forceMode ?? "auto") as AiMode;
