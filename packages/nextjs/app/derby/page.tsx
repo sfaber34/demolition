@@ -224,7 +224,11 @@ export default function DerbyPage() {
 
                 {/* Car effects (smoke, fire) */}
                 {gameSnapshot.cars.map(car => (
-                  <CarEffects key={`effects-${car.id}`} car={car} />
+                  <CarEffects
+                    key={`effects-${car.id}`}
+                    car={car}
+                    tMs={gameSnapshot.gameTime + gameSnapshot.alpha * 8}
+                  />
                 ))}
 
                 {/* Sparks */}

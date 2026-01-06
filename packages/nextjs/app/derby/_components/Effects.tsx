@@ -124,17 +124,43 @@ ExplosionEffect.displayName = "ExplosionEffect";
 // Smoke/Fire effects for damaged cars
 // Uses deterministic offsets based on car position for animation
 // Removed Date.now() and blur filters for performance
-export const CarEffects: React.FC<{ car: CarSim }> = memo(({ car }) => {
+export const CarEffects: React.FC<{ car: CarSim; tMs: number }> = ({ car, tMs }) => {
+  const t = tMs / 1000;
+
   if (!car.isAlive) {
-    // Dead car - static smoke plume (no animation for performance)
+    // Dead car - animated smoke + flickering flames
     return (
       <g>
-        {Array.from({ length: 4 }).map((_, i) => {
-          const x = car.position.x + (i % 2 === 0 ? -5 : 5);
-          const y = car.position.y - 5 - i * 8;
-          const size = 6 + i * 2;
-          const opacity = 0.35 - i * 0.07;
-          return <circle key={i} cx={x} cy={y} r={size} fill={`rgba(60, 60, 60, ${opacity})`} />;
+        {Array.from({ length: 6 }).map((_, i) => {
+          // 0..1 repeating rise progress per puff
+          const rise = (((tMs / 650 + i * 0.21) % 1) + 1) % 1;
+          const swirl = Math.sin(t * 2.2 + i * 1.7) * (5 + i * 0.4);
+          const x = car.position.x + (i % 2 === 0 ? -4 : 4) + swirl;
+          const y = car.position.y - 6 - rise * 44;
+          const size = 6 + rise * 10 + Math.sin(t * 3.1 + i) * 0.8;
+          const opacity = Math.max(0, (1 - rise) * (0.35 - i * 0.035));
+          const shade = 55 + i * 6;
+          return (
+            <circle
+              key={`dead-smoke-${i}`}
+              cx={x}
+              cy={y}
+              r={size}
+              fill={`rgba(${shade}, ${shade}, ${shade}, ${opacity})`}
+            />
+          );
+        })}
+
+        {Array.from({ length: 3 }).map((_, i) => {
+          const flicker = 0.5 + 0.5 * Math.sin(t * 12 + i * 2.3);
+          const jitterX = Math.sin(t * 10 + i * 3.1) * 2.5;
+          const jitterY = Math.cos(t * 11 + i * 2.2) * 1.8;
+          const x = car.position.x + (i - 1) * 5 + jitterX;
+          const y = car.position.y - 2 - flicker * 7 + jitterY;
+          const r = 3.5 + flicker * 4.5;
+          const opacity = 0.12 + flicker * 0.28;
+          const fill = i === 0 ? `rgba(255, 180, 60, ${opacity})` : `rgba(255, 90, 0, ${opacity})`;
+          return <circle key={`dead-fire-${i}`} cx={x} cy={y} r={r} fill={fill} />;
         })}
       </g>
     );
@@ -151,8 +177,8 @@ export const CarEffects: React.FC<{ car: CarSim }> = memo(({ car }) => {
       <g>
         {Array.from({ length: particleCount }).map((_, i) => {
           const x = car.position.x + (i % 2 === 0 ? -3 : 3);
-          const y = car.position.y - 5 - i * 6;
-          const size = 4 + i;
+          const y = car.position.y - 5 - i * 6 - Math.sin(t * 2.5 + i * 1.1) * 1.2;
+          const size = 4 + i + Math.sin(t * 2.1 + i * 1.4) * 0.6;
           const opacity = Math.max(0, 0.25 * intensity - i * 0.05);
 
           return (
@@ -165,18 +191,17 @@ export const CarEffects: React.FC<{ car: CarSim }> = memo(({ car }) => {
             />
           );
         })}
-        {/* Fire effect for critical damage - static flames */}
+        {/* Fire effect for critical damage - animated flames */}
         {healthPercent < 0.25 && (
           <>
-            {Array.from({ length: 2 }).map((_, i) => (
-              <circle
-                key={`fire-${i}`}
-                cx={car.position.x + (i === 0 ? -4 : 4)}
-                cy={car.position.y - 2}
-                r={5}
-                fill="rgba(255, 120, 0, 0.4)"
-              />
-            ))}
+            {Array.from({ length: 2 }).map((_, i) => {
+              const flicker = 0.5 + 0.5 * Math.sin(t * 13 + i * 4.1);
+              const x = car.position.x + (i === 0 ? -4 : 4) + Math.sin(t * 9 + i) * 1.8;
+              const y = car.position.y - 2 - flicker * 5;
+              const r = 3.8 + flicker * 3.8;
+              const opacity = 0.18 + flicker * 0.35;
+              return <circle key={`fire-${i}`} cx={x} cy={y} r={r} fill={`rgba(255, 120, 0, ${opacity})`} />;
+            })}
           </>
         )}
       </g>
@@ -184,7 +209,7 @@ export const CarEffects: React.FC<{ car: CarSim }> = memo(({ car }) => {
   }
 
   return null;
-});
+};
 CarEffects.displayName = "CarEffects";
 
 // Dust cloud effect when moving
