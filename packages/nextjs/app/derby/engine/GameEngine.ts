@@ -155,6 +155,10 @@ export class GameEngine {
     this.world.gamePhase = "playing";
     this.effects = createEmptyEffectsState();
     this.accumulator = 0;
+    // Important: car IDs are re-used (carIdCounter reset) and gameTime rewinds to 0.
+    // Controllers that keep per-car memory keyed by ID must be reset as well.
+    this.aiController = new DerbyAiController();
+    this.previousStates.clear();
     this.savePreviousStates();
   }
 

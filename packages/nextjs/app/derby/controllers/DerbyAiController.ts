@@ -176,6 +176,7 @@ function getFrontBackWallContact(car: CarSim): {
 export class DerbyAiController implements CarController {
   private controlledCars: ControlledCars;
   private memoryByCarId: Map<string, CarMemory> = new Map();
+  private lastNowMs: number = 0;
 
   constructor(opts: { skipIndices?: number[]; onlyIndices?: number[] } = {}) {
     if (opts.onlyIndices && opts.onlyIndices.length > 0) {
@@ -210,6 +211,14 @@ export class DerbyAiController implements CarController {
 
   update(world: WorldSim, dtMs: number, nowMs: number): void {
     if (world.gamePhase !== "playing") return;
+
+    // Defensive reset: on game restart the sim time rewinds to 0, but car IDs may be re-used.
+    // If we don't clear, old "untilMs" timers/waypoints can remain active and cause bad start behavior
+    // (e.g. reversing into walls / ping-pong recovery).
+    if (nowMs < this.lastNowMs) {
+      this.memoryByCarId.clear();
+    }
+    this.lastNowMs = nowMs;
 
     // Clean up memory for cars that no longer exist (e.g. restart)
     const liveIds = new Set(world.cars.map(c => c.id));
