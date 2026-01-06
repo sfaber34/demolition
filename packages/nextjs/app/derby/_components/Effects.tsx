@@ -128,42 +128,9 @@ export const CarEffects: React.FC<{ car: CarSim; tMs: number }> = ({ car, tMs })
   const t = tMs / 1000;
 
   if (!car.isAlive) {
-    // Dead car - animated smoke + flickering flames
-    return (
-      <g>
-        {Array.from({ length: 6 }).map((_, i) => {
-          // 0..1 repeating rise progress per puff
-          const rise = (((tMs / 650 + i * 0.21) % 1) + 1) % 1;
-          const swirl = Math.sin(t * 2.2 + i * 1.7) * (5 + i * 0.4);
-          const x = car.position.x + (i % 2 === 0 ? -4 : 4) + swirl;
-          const y = car.position.y - 6 - rise * 44;
-          const size = 6 + rise * 10 + Math.sin(t * 3.1 + i) * 0.8;
-          const opacity = Math.max(0, (1 - rise) * (0.35 - i * 0.035));
-          const shade = 55 + i * 6;
-          return (
-            <circle
-              key={`dead-smoke-${i}`}
-              cx={x}
-              cy={y}
-              r={size}
-              fill={`rgba(${shade}, ${shade}, ${shade}, ${opacity})`}
-            />
-          );
-        })}
-
-        {Array.from({ length: 3 }).map((_, i) => {
-          const flicker = 0.5 + 0.5 * Math.sin(t * 12 + i * 2.3);
-          const jitterX = Math.sin(t * 10 + i * 3.1) * 2.5;
-          const jitterY = Math.cos(t * 11 + i * 2.2) * 1.8;
-          const x = car.position.x + (i - 1) * 5 + jitterX;
-          const y = car.position.y - 2 - flicker * 7 + jitterY;
-          const r = 3.5 + flicker * 4.5;
-          const opacity = 0.12 + flicker * 0.28;
-          const fill = i === 0 ? `rgba(255, 180, 60, ${opacity})` : `rgba(255, 90, 0, ${opacity})`;
-          return <circle key={`dead-fire-${i}`} cx={x} cy={y} r={r} fill={fill} />;
-        })}
-      </g>
-    );
+    // Dead car effects are rendered in dedicated layers so living cars can drive between fire and smoke.
+    // See `DeadCarFlames` / `DeadCarSmoke`.
+    return null;
   }
 
   const healthPercent = car.health / car.maxHealth;
@@ -211,6 +178,58 @@ export const CarEffects: React.FC<{ car: CarSim; tMs: number }> = ({ car, tMs })
   return null;
 };
 CarEffects.displayName = "CarEffects";
+
+export const DeadCarFlames: React.FC<{ car: CarSim; tMs: number }> = ({ car, tMs }) => {
+  if (car.isAlive) return null;
+  const t = tMs / 1000;
+
+  return (
+    <g>
+      {Array.from({ length: 3 }).map((_, i) => {
+        const flicker = 0.5 + 0.5 * Math.sin(t * 12 + i * 2.3);
+        const jitterX = Math.sin(t * 10 + i * 3.1) * 2.5;
+        const jitterY = Math.cos(t * 11 + i * 2.2) * 1.8;
+        const x = car.position.x + (i - 1) * 5 + jitterX;
+        const y = car.position.y - 2 - flicker * 7 + jitterY;
+        const r = 3.5 + flicker * 4.5;
+        const opacity = 0.12 + flicker * 0.28;
+        const fill = i === 0 ? `rgba(255, 180, 60, ${opacity})` : `rgba(255, 90, 0, ${opacity})`;
+        return <circle key={`dead-fire-${i}`} cx={x} cy={y} r={r} fill={fill} />;
+      })}
+    </g>
+  );
+};
+DeadCarFlames.displayName = "DeadCarFlames";
+
+export const DeadCarSmoke: React.FC<{ car: CarSim; tMs: number }> = ({ car, tMs }) => {
+  if (car.isAlive) return null;
+  const t = tMs / 1000;
+
+  return (
+    <g>
+      {Array.from({ length: 6 }).map((_, i) => {
+        // 0..1 repeating rise progress per puff
+        const rise = (((tMs / 650 + i * 0.21) % 1) + 1) % 1;
+        const swirl = Math.sin(t * 2.2 + i * 1.7) * (5 + i * 0.4);
+        const x = car.position.x + (i % 2 === 0 ? -4 : 4) + swirl;
+        const y = car.position.y - 6 - rise * 44;
+        const size = 6 + rise * 10 + Math.sin(t * 3.1 + i) * 0.8;
+        const opacity = Math.max(0, (1 - rise) * (0.35 - i * 0.035));
+        const shade = 55 + i * 6;
+        return (
+          <circle
+            key={`dead-smoke-${i}`}
+            cx={x}
+            cy={y}
+            r={size}
+            fill={`rgba(${shade}, ${shade}, ${shade}, ${opacity})`}
+          />
+        );
+      })}
+    </g>
+  );
+};
+DeadCarSmoke.displayName = "DeadCarSmoke";
 
 // Dust cloud effect when moving
 // Removed Date.now() and blur filter for performance

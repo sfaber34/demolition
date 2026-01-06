@@ -4,4 +4,14 @@ export { HUD } from "./HUD";
 export { StatsPanel } from "./StatsPanel";
 export { TitleScreen } from "./TitleScreen";
 export { GameOverScreen } from "./GameOverScreen";
-export { TireMarks, Sparks, SmokeParticles, ExplosionEffect, CarEffects, DustCloud, DamageNumbers } from "./Effects";
+export {
+  TireMarks,
+  Sparks,
+  SmokeParticles,
+  ExplosionEffect,
+  CarEffects,
+  DeadCarFlames,
+  DeadCarSmoke,
+  DustCloud,
+  DamageNumbers,
+} from "./Effects";

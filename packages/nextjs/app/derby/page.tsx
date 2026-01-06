@@ -6,6 +6,8 @@ import {
   Car,
   CarEffects,
   DamageNumbers,
+  DeadCarFlames,
+  DeadCarSmoke,
   DustCloud,
   ExplosionEffect,
   GameOverScreen,
@@ -217,19 +219,40 @@ export default function DerbyPage() {
                   <DustCloud key={`dust-${car.id}`} car={car} />
                 ))}
 
-                {/* Cars */}
-                {gameSnapshot.cars.map(car => (
-                  <Car key={car.id} car={car} />
-                ))}
+                {(() => {
+                  const deadCars = gameSnapshot.cars.filter(c => !c.isAlive);
+                  const liveCars = gameSnapshot.cars.filter(c => c.isAlive);
+                  const tMs = gameSnapshot.gameTime + gameSnapshot.alpha * 8;
 
-                {/* Car effects (smoke, fire) */}
-                {gameSnapshot.cars.map(car => (
-                  <CarEffects
-                    key={`effects-${car.id}`}
-                    car={car}
-                    tMs={gameSnapshot.gameTime + gameSnapshot.alpha * 8}
-                  />
-                ))}
+                  return (
+                    <>
+                      {/* Dead car bodies under everything else */}
+                      {deadCars.map(car => (
+                        <Car key={`dead-${car.id}`} car={car} />
+                      ))}
+
+                      {/* Dead flames above dead body but below live cars */}
+                      {deadCars.map(car => (
+                        <DeadCarFlames key={`dead-flames-${car.id}`} car={car} tMs={tMs} />
+                      ))}
+
+                      {/* Live cars always drive over dead body + flames */}
+                      {liveCars.map(car => (
+                        <Car key={`live-${car.id}`} car={car} />
+                      ))}
+
+                      {/* Live car effects */}
+                      {liveCars.map(car => (
+                        <CarEffects key={`effects-${car.id}`} car={car} tMs={tMs} />
+                      ))}
+
+                      {/* Dead smoke always above cars */}
+                      {deadCars.map(car => (
+                        <DeadCarSmoke key={`dead-smoke-${car.id}`} car={car} tMs={tMs} />
+                      ))}
+                    </>
+                  );
+                })()}
 
                 {/* Sparks */}
                 <Sparks sparks={gameSnapshot.effects.sparks} />
