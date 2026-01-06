@@ -422,20 +422,13 @@ export class DerbyAiController implements CarController {
         }
       }
 
-      // --- Decide behavior ---
-      const mode: AiMode =
-        effectiveMode !== "auto"
-          ? effectiveMode
-          : mem.recoverUntilMs > nowMs || mem.evadeUntilMs > nowMs
-            ? "repositioning"
-            : "auto";
-
       let chosenBehavior: AIBehavior = car.aiState;
       let input: CarInput = { throttle: 0.9, steer: 0 };
 
       // 1) Recovery should override wall-avoid; wall-avoid is not enough when steer effectiveness is ~0 at low speed.
       if (mem.recoverUntilMs > nowMs) {
-        chosenBehavior = "repositioning";
+        // Keep reporting as "orbiting" even while escaping. We only expose 2 AI states now.
+        chosenBehavior = "orbiting";
         const wallNormal = mem.recoverWallNormal ?? getNearestWallNormalForCar(car);
         const escapeTarget = vec.add(car.position, vec.mul(wallNormal, 240));
         const escapeAngle = me.angleToTarget(escapeTarget.x, escapeTarget.y);
@@ -466,9 +459,9 @@ export class DerbyAiController implements CarController {
           steer: steerTowardAngle(angleToCenter, 1.8),
         };
         chosenBehavior = "orbiting";
-      } else if (mode === "repositioning") {
-        // 2) Recover / evade
-        chosenBehavior = "repositioning";
+      } else if (effectiveMode === "auto" && mem.evadeUntilMs > nowMs) {
+        // 2) Evade threats (still reported as "orbiting")
+        chosenBehavior = "orbiting";
         if (threat) {
           // Dodge laterally away from the threat.
           const threatAngle = me.angleTo(threat);

@@ -14,7 +14,7 @@ export type HudDebugValue = "dmg" | "wallDistance" | "speed" | "throttle";
 /**
  * AI testing helper:
  * - Set to "orbiting" to test Wander + WallAvoid only (default).
- * - Set to "striking" or "repositioning" to force those modes.
+ * - Set to "striking" to force attack mode.
  * - Set to "auto" once you want full behavior switching.
  *
  * Note: This config is independent of DEBUG_CONFIG.enabled so you can test AI

@@ -13,7 +13,7 @@ export interface CarInput {
 }
 
 /** AI behavioral state - used by AI controller */
-export type AIBehavior = "orbiting" | "striking" | "repositioning";
+export type AIBehavior = "orbiting" | "striking";
 
 /** Core car simulation state - mutable during sim step */
 export interface CarSim {
