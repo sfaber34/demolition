@@ -23,7 +23,7 @@ export type HudDebugValue = "dmg" | "wallDistance" | "speed" | "throttle";
 export type AiForceMode = "auto" | AIBehavior;
 export const AI_TEST_CONFIG: { forceMode: AiForceMode } = {
   // Default: start in wander+wall-avoid so you can tune driving first.
-  forceMode: "orbiting",
+  forceMode: "auto",
 };
 
 export const DEBUG_CONFIG = {

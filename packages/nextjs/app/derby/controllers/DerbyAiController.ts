@@ -184,6 +184,9 @@ export class DerbyAiController implements CarController {
   private memoryByCarId: Map<string, CarMemory> = new Map();
   private lastNowMs: number = 0;
 
+  // Make starts look cooler: orbit briefly before engaging.
+  private static readonly START_ORBIT_MS = 2000;
+
   constructor(opts: { skipIndices?: number[]; onlyIndices?: number[] } = {}) {
     if (opts.onlyIndices && opts.onlyIndices.length > 0) {
       this.controlledCars = { mode: "onlyIndices", onlyIndices: new Set(opts.onlyIndices) };
@@ -480,7 +483,8 @@ export class DerbyAiController implements CarController {
         // 3) Attack or wander
         const target = findNearestEnemy(car, world.cars);
 
-        if (effectiveMode === "striking" || (effectiveMode === "auto" && target)) {
+        const inOpeningOrbit = effectiveMode === "auto" && nowMs < DerbyAiController.START_ORBIT_MS;
+        if (!inOpeningOrbit && (effectiveMode === "striking" || (effectiveMode === "auto" && target))) {
           // Attack: aim for enemy rear + mild lead for side/rear damage and speed advantage.
           chosenBehavior = "striking";
           const enemy = target ?? world.cars.find(c => c.id !== car.id && c.isAlive) ?? null;
