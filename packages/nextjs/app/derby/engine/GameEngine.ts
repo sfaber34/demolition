@@ -30,12 +30,7 @@ export interface GameSnapshot {
 
 // ============ Car Factory ============
 
-let carIdCounter = 0;
-function generateCarId(): string {
-  return `car-${++carIdCounter}`;
-}
-
-function createCar(name: string, color: string, position: Vector2D, rotation: number): CarSim {
+function createCar(id: string, name: string, color: string, position: Vector2D, rotation: number): CarSim {
   // Slight stat variations for each car (using deterministic seed based on name)
   const seed = name.charCodeAt(0) / 255;
   const accelVariation = 0.9 + seed * 0.3;
@@ -43,7 +38,7 @@ function createCar(name: string, color: string, position: Vector2D, rotation: nu
   const tractionVariation = 0.75 + ((seed * 13) % 1) * 0.3;
 
   return {
-    id: generateCarId(),
+    id,
     name,
     color,
     position: { x: position.x, y: position.y },
@@ -95,7 +90,12 @@ function createInitialCars(): CarSim[] {
   ];
 
   const colors = Object.values(CAR_COLORS);
-  return spawnPositions.map((spawn, i) => createCar(CAR_NAMES[i], colors[i], spawn.pos, spawn.rotation));
+  // IMPORTANT: IDs must be deterministic and independent of module-level counters.
+  // In React StrictMode (dev), components can mount twice. If IDs are counter-based,
+  // the "first game" can differ from subsequent restarts even with the same seed.
+  return spawnPositions.map((spawn, i) =>
+    createCar(`car-${i + 1}`, CAR_NAMES[i], colors[i], spawn.pos, spawn.rotation),
+  );
 }
 
 // ============ Game Engine Class ============
@@ -150,7 +150,6 @@ export class GameEngine {
 
   /** Restart the game with fresh state */
   restart(): void {
-    carIdCounter = 0; // Reset for determinism
     this.world = this.createInitialWorld();
     this.world.gamePhase = "playing";
     this.effects = createEmptyEffectsState();

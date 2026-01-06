@@ -28,7 +28,7 @@ export const AI_TEST_CONFIG: { forceMode: AiForceMode; runSeed: number } = {
    * Deterministic "run seed" for the AI.
    * Change this integer (0, 1, 2, 3, ...) to get a different-but-repeatable match.
    */
-  runSeed: 0,
+  runSeed: 3,
 };
 
 export const DEBUG_CONFIG = {

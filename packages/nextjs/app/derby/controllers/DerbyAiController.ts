@@ -12,6 +12,10 @@ type ControlledCars =
   | { mode: "onlyIndices"; onlyIndices: Set<number> };
 
 interface CarMemory {
+  // Deterministic tick counter (increments once per controller update call).
+  // Used for scheduling (stance windows, waypoint refresh) without relying on nowMs.
+  tick: number;
+
   // High-level behavior timers (ms, sim-time)
   evadeUntilMs: number;
   wallAvoidUntilMs: number;
@@ -21,7 +25,8 @@ interface CarMemory {
 
   // Wander target
   waypoint: Vector2D | null;
-  nextWaypointAtMs: number;
+  nextWaypointAtTick: number;
+  waypointPickCount: number;
 
   // Stuck detection (controller-side; do not rely on sim writing lastPosition)
   lastPos: Vector2D | null;
@@ -35,7 +40,8 @@ interface CarMemory {
 
   // High-level "stance" (orbit vs strike) selection in auto mode
   autoStance: "orbiting" | "striking";
-  autoStanceUntilMs: number;
+  autoStanceUntilTick: number;
+  stancePickCount: number;
 }
 
 function clamp(x: number, min: number, max: number): number {
@@ -61,15 +67,19 @@ function stableRand01(seed: string): number {
   return ((h >>> 0) % 1_000_000) / 1_000_000;
 }
 
-function pickWanderWaypoint(carId: string, nowMs: number, runSeed: number): Vector2D {
+function randFromStream01(runSeed: number, carId: string, stream: string, index: number): number {
+  // Deterministic "infinite array" of [0,1) values. No time component.
+  return stableRand01(`${runSeed}:${carId}:${stream}:${index}`);
+}
+
+function pickWanderWaypoint(carId: string, runSeed: number, pickIndex: number): Vector2D {
   // Pick a point roughly around center but drifting over time.
   const cx = ARENA_CONFIG.width / 2;
   const cy = ARENA_CONFIG.height / 2;
   const margin = ARENA_CONFIG.wallThickness + 80;
 
-  const t = Math.floor(nowMs / 1200); // change ~ every 1.2s if forced to repick
-  const r1 = stableRand01(`${runSeed}:${carId}:${t}:a`);
-  const r2 = stableRand01(`${runSeed}:${carId}:${t}:b`);
+  const r1 = randFromStream01(runSeed, carId, "waypoint:a", pickIndex);
+  const r2 = randFromStream01(runSeed, carId, "waypoint:b", pickIndex);
 
   const angle = r1 * Math.PI * 2;
   const radius = 120 + r2 * 240; // 120..360
@@ -189,9 +199,10 @@ export class DerbyAiController implements CarController {
   private lastNowMs: number = 0;
 
   // Make starts look cooler: orbit briefly before engaging.
-  private static readonly START_ORBIT_MS = 2000;
+  private static readonly START_ORBIT_TICKS = 250; // 2000ms / 8ms
   // Prevent rapid flip-flopping: once chosen, keep a stance for a while.
-  private static readonly AUTO_STANCE_MS = 5000;
+  private static readonly AUTO_STANCE_TICKS = 625; // 5000ms / 8ms
+  private static readonly WAYPOINT_REPICK_TICKS = 175; // 1400ms / 8ms
 
   constructor(opts: { skipIndices?: number[]; onlyIndices?: number[] } = {}) {
     if (opts.onlyIndices && opts.onlyIndices.length > 0) {
@@ -210,13 +221,15 @@ export class DerbyAiController implements CarController {
     const existing = this.memoryByCarId.get(car.id);
     if (existing) return existing;
     const created: CarMemory = {
+      tick: 0,
       evadeUntilMs: 0,
       wallAvoidUntilMs: 0,
       recoverUntilMs: 0,
       recoverMode: null,
       recoverWallNormal: null,
       waypoint: null,
-      nextWaypointAtMs: 0,
+      nextWaypointAtTick: 0,
+      waypointPickCount: 0,
       lastPos: null,
       stuckForMs: 0,
       contactCarId: null,
@@ -224,7 +237,8 @@ export class DerbyAiController implements CarController {
       contactLastDist: null,
       contactEscapeCooldownUntilMs: 0,
       autoStance: "orbiting",
-      autoStanceUntilMs: 0,
+      autoStanceUntilTick: 0,
+      stancePickCount: 0,
     };
     this.memoryByCarId.set(car.id, created);
     return created;
@@ -255,6 +269,7 @@ export class DerbyAiController implements CarController {
 
       const me = aiView(car);
       const mem = this.getMemory(car);
+      mem.tick += 1;
       const contact = getFrontBackWallContact(car);
 
       // --- Controller-side stuck detection ---
@@ -367,16 +382,16 @@ export class DerbyAiController implements CarController {
       // After that: each car randomly commits to orbiting or striking for ~5 seconds.
       let autoStance: "orbiting" | "striking" = "orbiting";
       if (effectiveMode === "auto") {
-        if (nowMs < DerbyAiController.START_ORBIT_MS) {
+        if (mem.tick < DerbyAiController.START_ORBIT_TICKS) {
           mem.autoStance = "orbiting";
-          mem.autoStanceUntilMs = DerbyAiController.START_ORBIT_MS;
+          mem.autoStanceUntilTick = DerbyAiController.START_ORBIT_TICKS;
           autoStance = "orbiting";
         } else {
-          if (nowMs >= mem.autoStanceUntilMs) {
-            const epoch = Math.floor((nowMs - DerbyAiController.START_ORBIT_MS) / DerbyAiController.AUTO_STANCE_MS);
-            const r = stableRand01(`${runSeed}:${car.id}:${epoch}:autoStance`);
+          if (mem.tick >= mem.autoStanceUntilTick) {
+            const r = randFromStream01(runSeed, car.id, "autoStance", mem.stancePickCount);
             mem.autoStance = r < 0.5 ? "orbiting" : "striking";
-            mem.autoStanceUntilMs = DerbyAiController.START_ORBIT_MS + (epoch + 1) * DerbyAiController.AUTO_STANCE_MS;
+            mem.stancePickCount += 1;
+            mem.autoStanceUntilTick = mem.tick + DerbyAiController.AUTO_STANCE_TICKS;
           }
           autoStance = mem.autoStance;
         }
@@ -535,11 +550,12 @@ export class DerbyAiController implements CarController {
         } else {
           // Wander/orbit: follow a waypoint that drifts around center.
           const needsNewWaypoint =
-            !mem.waypoint || nowMs >= mem.nextWaypointAtMs || vec.distance(car.position, mem.waypoint) < 65;
+            !mem.waypoint || mem.tick >= mem.nextWaypointAtTick || vec.distance(car.position, mem.waypoint) < 65;
 
           if (needsNewWaypoint) {
-            mem.waypoint = pickWanderWaypoint(car.id, nowMs, runSeed);
-            mem.nextWaypointAtMs = nowMs + 1400;
+            mem.waypoint = pickWanderWaypoint(car.id, runSeed, mem.waypointPickCount);
+            mem.waypointPickCount += 1;
+            mem.nextWaypointAtTick = mem.tick + DerbyAiController.WAYPOINT_REPICK_TICKS;
           }
 
           const wp = mem.waypoint ?? { x: ARENA_CONFIG.width / 2, y: ARENA_CONFIG.height / 2 };
