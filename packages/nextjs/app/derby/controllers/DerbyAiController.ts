@@ -1,5 +1,5 @@
 import { AI_TEST_CONFIG } from "../debug/debugConfig";
-import { getCarCorners, getCarRear, physicsEngine, vec } from "../physics/PhysicsEngine";
+import { getCarCorners, getCarRear, getPointWallDistanceAndNormal, physicsEngine, vec } from "../physics/PhysicsEngine";
 import type { AIBehavior, CarInput, CarSim, Vector2D, WorldSim } from "../sim/typesSim";
 import { AI_CONFIG, ARENA_CONFIG } from "../sim/typesSim";
 import { aiView, findNearestEnemy } from "./aiHelper";
@@ -102,70 +102,18 @@ function distance(a: Vector2D, b: Vector2D): number {
 function getNearestWallNormalForCar(car: CarSim): Vector2D {
   // Normal points inward (toward arena center), and we compute it from corners
   // so it matches how `getCarWallDistance()` is derived.
-  const left = ARENA_CONFIG.wallThickness;
-  const right = ARENA_CONFIG.width - ARENA_CONFIG.wallThickness;
-  const top = ARENA_CONFIG.wallThickness;
-  const bottom = ARENA_CONFIG.height - ARENA_CONFIG.wallThickness;
-
   let bestDist = Infinity;
   let bestNormal: Vector2D = { x: 0, y: 0 };
 
   for (const c of getCarCorners(car)) {
-    // Distances to each inner wall from this corner
-    const dLeft = c.x - left;
-    if (dLeft < bestDist) {
-      bestDist = dLeft;
-      bestNormal = { x: 1, y: 0 };
-    }
-    const dRight = right - c.x;
-    if (dRight < bestDist) {
-      bestDist = dRight;
-      bestNormal = { x: -1, y: 0 };
-    }
-    const dTop = c.y - top;
-    if (dTop < bestDist) {
-      bestDist = dTop;
-      bestNormal = { x: 0, y: 1 };
-    }
-    const dBottom = bottom - c.y;
-    if (dBottom < bestDist) {
-      bestDist = dBottom;
-      bestNormal = { x: 0, y: -1 };
+    const r = getPointWallDistanceAndNormal(c);
+    if (r.dist < bestDist) {
+      bestDist = r.dist;
+      bestNormal = r.normal;
     }
   }
 
   return bestNormal;
-}
-
-function pointToWallDistanceAndNormal(p: Vector2D): { dist: number; normal: Vector2D } {
-  // Matches PhysicsEngine.pointToWallDistance() (internal), using inner wall bounds.
-  const left = ARENA_CONFIG.wallThickness;
-  const right = ARENA_CONFIG.width - ARENA_CONFIG.wallThickness;
-  const top = ARENA_CONFIG.wallThickness;
-  const bottom = ARENA_CONFIG.height - ARENA_CONFIG.wallThickness;
-
-  const dLeft = p.x - left;
-  const dRight = right - p.x;
-  const dTop = p.y - top;
-  const dBottom = bottom - p.y;
-
-  let dist = dLeft;
-  let normal: Vector2D = { x: 1, y: 0 };
-
-  if (dRight < dist) {
-    dist = dRight;
-    normal = { x: -1, y: 0 };
-  }
-  if (dTop < dist) {
-    dist = dTop;
-    normal = { x: 0, y: 1 };
-  }
-  if (dBottom < dist) {
-    dist = dBottom;
-    normal = { x: 0, y: -1 };
-  }
-
-  return { dist, normal };
 }
 
 function getFrontBackWallContact(car: CarSim): {
@@ -180,13 +128,13 @@ function getFrontBackWallContact(car: CarSim): {
 
   let bestFront = { dist: Infinity, normal: { x: 0, y: 0 } as Vector2D };
   for (const c of frontCorners) {
-    const r = pointToWallDistanceAndNormal(c);
+    const r = getPointWallDistanceAndNormal(c);
     if (r.dist < bestFront.dist) bestFront = r;
   }
 
   let bestRear = { dist: Infinity, normal: { x: 0, y: 0 } as Vector2D };
   for (const c of rearCorners) {
-    const r = pointToWallDistanceAndNormal(c);
+    const r = getPointWallDistanceAndNormal(c);
     if (r.dist < bestRear.dist) bestRear = r;
   }
 

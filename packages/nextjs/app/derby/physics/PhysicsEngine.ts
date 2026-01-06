@@ -27,6 +27,7 @@ export const vec = {
     const len = vec.length(v);
     return len > 0 ? { x: v.x / len, y: v.y / len } : { x: 0, y: 0 };
   },
+  clamp: (x: number, min: number, max: number): number => Math.max(min, Math.min(max, x)),
   rotate: (v: Vector2D, angle: number): Vector2D => {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
@@ -435,47 +436,17 @@ class DefaultPhysicsEngine implements IPhysicsEngine {
     if (!car.isAlive) return null;
 
     const corners = this.getCarCorners(car);
-    const innerLeft = ARENA_CONFIG.wallThickness;
-    const innerRight = ARENA_CONFIG.width - ARENA_CONFIG.wallThickness;
-    const innerTop = ARENA_CONFIG.wallThickness;
-    const innerBottom = ARENA_CONFIG.height - ARENA_CONFIG.wallThickness;
-
     let maxPenetration = 0;
     let collisionNormal: Vector2D = { x: 0, y: 0 };
     let contactPoint: Vector2D = { x: 0, y: 0 };
 
     for (const corner of corners) {
-      if (corner.x < innerLeft) {
-        const pen = innerLeft - corner.x;
-        if (pen > maxPenetration) {
-          maxPenetration = pen;
-          collisionNormal = { x: 1, y: 0 };
-          contactPoint = corner;
-        }
-      }
-      if (corner.x > innerRight) {
-        const pen = corner.x - innerRight;
-        if (pen > maxPenetration) {
-          maxPenetration = pen;
-          collisionNormal = { x: -1, y: 0 };
-          contactPoint = corner;
-        }
-      }
-      if (corner.y < innerTop) {
-        const pen = innerTop - corner.y;
-        if (pen > maxPenetration) {
-          maxPenetration = pen;
-          collisionNormal = { x: 0, y: 1 };
-          contactPoint = corner;
-        }
-      }
-      if (corner.y > innerBottom) {
-        const pen = corner.y - innerBottom;
-        if (pen > maxPenetration) {
-          maxPenetration = pen;
-          collisionNormal = { x: 0, y: -1 };
-          contactPoint = corner;
-        }
+      const sd = signedDistanceToArenaInnerBoundary(corner.x, corner.y);
+      // Positive signed distance means "outside" (penetrating the wall boundary).
+      if (sd > maxPenetration) {
+        maxPenetration = sd;
+        collisionNormal = inwardNormalAtPoint(corner.x, corner.y);
+        contactPoint = corner;
       }
     }
 
@@ -664,10 +635,75 @@ const ARENA_INNER_BOUNDS = {
   bottom: ARENA_CONFIG.height - ARENA_CONFIG.wallThickness,
 };
 
+/**
+ * Signed distance (px) from point to the *inner* arena boundary, modeled as a rounded-rectangle.
+ *
+ * Convention:
+ * - negative => inside the drivable area
+ * - positive => outside (penetrating the wall)
+ *
+ * This is deterministic and used by both wall collision and wall distance queries.
+ */
+function signedDistanceToArenaInnerBoundary(x: number, y: number): number {
+  const cx = (ARENA_INNER_BOUNDS.left + ARENA_INNER_BOUNDS.right) / 2;
+  const cy = (ARENA_INNER_BOUNDS.top + ARENA_INNER_BOUNDS.bottom) / 2;
+  const halfW = (ARENA_INNER_BOUNDS.right - ARENA_INNER_BOUNDS.left) / 2;
+  const halfH = (ARENA_INNER_BOUNDS.bottom - ARENA_INNER_BOUNDS.top) / 2;
+
+  // Clamp radius so we never invert the shape.
+  const r = vec.clamp(ARENA_CONFIG.cornerRadius ?? 0, 0, Math.max(0, Math.min(halfW, halfH)));
+
+  // If r=0, this reduces to a plain AABB distance field.
+  const ax = Math.abs(x - cx) - (halfW - r);
+  const ay = Math.abs(y - cy) - (halfH - r);
+  const ox = Math.max(ax, 0);
+  const oy = Math.max(ay, 0);
+  const outside = Math.sqrt(ox * ox + oy * oy);
+  const inside = Math.min(Math.max(ax, ay), 0);
+  return outside + inside - r;
+}
+
+function inwardNormalAtPoint(x: number, y: number): Vector2D {
+  // Gradient of signed distance points "outward" (toward increasing distance),
+  // so inward normal is -grad.
+  //
+  // This is used for both collision response and AI escape normals.
+  const EPS = 0.5;
+  const sdXp = signedDistanceToArenaInnerBoundary(x + EPS, y);
+  const sdXm = signedDistanceToArenaInnerBoundary(x - EPS, y);
+  const sdYp = signedDistanceToArenaInnerBoundary(x, y + EPS);
+  const sdYm = signedDistanceToArenaInnerBoundary(x, y - EPS);
+
+  const gx = (sdXp - sdXm) / (2 * EPS);
+  const gy = (sdYp - sdYm) / (2 * EPS);
+
+  const gradLen = Math.sqrt(gx * gx + gy * gy);
+  if (gradLen < 1e-6) {
+    // Fallback: aim inward toward arena center (rare; usually only deep interior).
+    const cx = (ARENA_INNER_BOUNDS.left + ARENA_INNER_BOUNDS.right) / 2;
+    const cy = (ARENA_INNER_BOUNDS.top + ARENA_INNER_BOUNDS.bottom) / 2;
+    return vec.normalize({ x: cx - x, y: cy - y });
+  }
+  return { x: -gx / gradLen, y: -gy / gradLen };
+}
+
 function pointToWallDistance(x: number, y: number): number {
-  const dx = Math.min(x - ARENA_INNER_BOUNDS.left, ARENA_INNER_BOUNDS.right - x);
-  const dy = Math.min(y - ARENA_INNER_BOUNDS.top, ARENA_INNER_BOUNDS.bottom - y);
-  return Math.min(dx, dy);
+  // Keep the historic sign convention:
+  // - positive => inside (clearance to wall)
+  // - negative => outside (penetration amount)
+  return -signedDistanceToArenaInnerBoundary(x, y);
+}
+
+/**
+ * Distance and inward normal from a point to the nearest wall boundary.
+ * - dist: positive when inside, negative when outside (penetrating)
+ * - normal: points inward (toward drivable area)
+ */
+export function getPointWallDistanceAndNormal(p: Vector2D): { dist: number; normal: Vector2D } {
+  return {
+    dist: pointToWallDistance(p.x, p.y),
+    normal: inwardNormalAtPoint(p.x, p.y),
+  };
 }
 
 /**

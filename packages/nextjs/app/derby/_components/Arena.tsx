@@ -4,7 +4,7 @@ import React, { memo } from "react";
 import { ARENA_CONFIG } from "../sim/typesSim";
 
 export const Arena: React.FC = memo(() => {
-  const { width, height, wallThickness } = ARENA_CONFIG;
+  const { width, height, wallThickness, cornerRadius } = ARENA_CONFIG;
 
   // Generate wood plank pattern for walls
   const generatePlanks = (x: number, y: number, w: number, h: number, isVertical: boolean) => {
@@ -112,6 +112,8 @@ export const Arena: React.FC = memo(() => {
         width={width - wallThickness * 2}
         height={height - wallThickness * 2}
         fill="url(#dirtPattern)"
+        rx={cornerRadius}
+        ry={cornerRadius}
       />
 
       {/* Floor dirt variation overlay */}
@@ -121,6 +123,8 @@ export const Arena: React.FC = memo(() => {
         width={width - wallThickness * 2}
         height={height - wallThickness * 2}
         fill="rgba(180, 160, 130, 0.1)"
+        rx={cornerRadius}
+        ry={cornerRadius}
       />
 
       {/* Wall shadows on floor */}
@@ -152,6 +156,60 @@ export const Arena: React.FC = memo(() => {
         height={15}
         fill="url(#wallShadowBottom)"
       />
+
+      {/* Rounded inner-corner bumpers (visual match for physics rounded corners) */}
+      {cornerRadius > 0 && (
+        <g opacity={0.95}>
+          {/* Top-left */}
+          <path
+            d={[
+              `M ${wallThickness} ${wallThickness}`,
+              `L ${wallThickness + cornerRadius} ${wallThickness}`,
+              `A ${cornerRadius} ${cornerRadius} 0 0 0 ${wallThickness} ${wallThickness + cornerRadius}`,
+              "Z",
+            ].join(" ")}
+            fill="#6a563a"
+            stroke="#3d2e17"
+            strokeWidth={1}
+          />
+          {/* Top-right */}
+          <path
+            d={[
+              `M ${width - wallThickness} ${wallThickness}`,
+              `L ${width - wallThickness - cornerRadius} ${wallThickness}`,
+              `A ${cornerRadius} ${cornerRadius} 0 0 1 ${width - wallThickness} ${wallThickness + cornerRadius}`,
+              "Z",
+            ].join(" ")}
+            fill="#6a563a"
+            stroke="#3d2e17"
+            strokeWidth={1}
+          />
+          {/* Bottom-left */}
+          <path
+            d={[
+              `M ${wallThickness} ${height - wallThickness}`,
+              `L ${wallThickness + cornerRadius} ${height - wallThickness}`,
+              `A ${cornerRadius} ${cornerRadius} 0 0 1 ${wallThickness} ${height - wallThickness - cornerRadius}`,
+              "Z",
+            ].join(" ")}
+            fill="#6a563a"
+            stroke="#3d2e17"
+            strokeWidth={1}
+          />
+          {/* Bottom-right */}
+          <path
+            d={[
+              `M ${width - wallThickness} ${height - wallThickness}`,
+              `L ${width - wallThickness - cornerRadius} ${height - wallThickness}`,
+              `A ${cornerRadius} ${cornerRadius} 0 0 0 ${width - wallThickness} ${height - wallThickness - cornerRadius}`,
+              "Z",
+            ].join(" ")}
+            fill="#6a563a"
+            stroke="#3d2e17"
+            strokeWidth={1}
+          />
+        </g>
+      )}
 
       {/* Wooden walls - Left */}
       <g>{generatePlanks(0, 0, wallThickness, height, true)}</g>

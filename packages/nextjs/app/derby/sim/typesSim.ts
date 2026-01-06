@@ -138,12 +138,21 @@ export interface ArenaConfig {
   width: number;
   height: number;
   wallThickness: number;
+  /**
+   * Radius (px) of the *inner* arena corner rounding.
+   * 0 => perfect 90deg corners (more likely to wedge).
+   *
+   * Note: This rounds the drivable area boundary (inner wall), not the outer border.
+   */
+  cornerRadius: number;
 }
 
 export const ARENA_CONFIG: ArenaConfig = {
   width: 900,
   height: 600,
   wallThickness: 30,
+  // Big enough to prevent "perfect corner capture", small enough to keep the arena spacious.
+  cornerRadius: 75,
 };
 
 export const CAR_CONFIG = {
