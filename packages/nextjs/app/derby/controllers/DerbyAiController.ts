@@ -61,15 +61,15 @@ function stableRand01(seed: string): number {
   return ((h >>> 0) % 1_000_000) / 1_000_000;
 }
 
-function pickWanderWaypoint(carId: string, nowMs: number): Vector2D {
+function pickWanderWaypoint(carId: string, nowMs: number, runSeed: number): Vector2D {
   // Pick a point roughly around center but drifting over time.
   const cx = ARENA_CONFIG.width / 2;
   const cy = ARENA_CONFIG.height / 2;
   const margin = ARENA_CONFIG.wallThickness + 80;
 
   const t = Math.floor(nowMs / 1200); // change ~ every 1.2s if forced to repick
-  const r1 = stableRand01(`${carId}:${t}:a`);
-  const r2 = stableRand01(`${carId}:${t}:b`);
+  const r1 = stableRand01(`${runSeed}:${carId}:${t}:a`);
+  const r2 = stableRand01(`${runSeed}:${carId}:${t}:b`);
 
   const angle = r1 * Math.PI * 2;
   const radius = 120 + r2 * 240; // 120..360
@@ -232,6 +232,7 @@ export class DerbyAiController implements CarController {
 
   update(world: WorldSim, dtMs: number, nowMs: number): void {
     if (world.gamePhase !== "playing") return;
+    const runSeed = AI_TEST_CONFIG.runSeed ?? 0;
 
     // Defensive reset: on game restart the sim time rewinds to 0, but car IDs may be re-used.
     // If we don't clear, old "untilMs" timers/waypoints can remain active and cause bad start behavior
@@ -373,7 +374,7 @@ export class DerbyAiController implements CarController {
         } else {
           if (nowMs >= mem.autoStanceUntilMs) {
             const epoch = Math.floor((nowMs - DerbyAiController.START_ORBIT_MS) / DerbyAiController.AUTO_STANCE_MS);
-            const r = stableRand01(`${car.id}:${epoch}:autoStance`);
+            const r = stableRand01(`${runSeed}:${car.id}:${epoch}:autoStance`);
             mem.autoStance = r < 0.5 ? "orbiting" : "striking";
             mem.autoStanceUntilMs = DerbyAiController.START_ORBIT_MS + (epoch + 1) * DerbyAiController.AUTO_STANCE_MS;
           }
@@ -537,7 +538,7 @@ export class DerbyAiController implements CarController {
             !mem.waypoint || nowMs >= mem.nextWaypointAtMs || vec.distance(car.position, mem.waypoint) < 65;
 
           if (needsNewWaypoint) {
-            mem.waypoint = pickWanderWaypoint(car.id, nowMs);
+            mem.waypoint = pickWanderWaypoint(car.id, nowMs, runSeed);
             mem.nextWaypointAtMs = nowMs + 1400;
           }
 

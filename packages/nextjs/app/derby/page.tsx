@@ -45,13 +45,16 @@ export default function DerbyPage() {
     lastTimeRef.current = timestamp;
 
     const phase = engine.getPhase();
-    // Run game loop during both playing and victory phases
+    // Only schedule frames while actively simulating.
+    // If we keep scheduling during "gameover"/"title", it's easy to accidentally end up with
+    // multiple overlapping RAF loops across restarts (which makes timing nondeterministic).
     if (phase === "playing" || phase === "victory") {
       engine.step(deltaTime);
       setGameSnapshot(engine.getSnapshot());
+      animationRef.current = requestAnimationFrame(gameLoop);
+    } else {
+      animationRef.current = null;
     }
-
-    animationRef.current = requestAnimationFrame(gameLoop);
   }, []);
 
   useEffect(() => {

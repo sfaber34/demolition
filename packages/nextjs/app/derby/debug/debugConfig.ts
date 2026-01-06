@@ -21,9 +21,14 @@ export type HudDebugValue = "dmg" | "wallDistance" | "speed" | "throttle";
  * without turning on visual overlays.
  */
 export type AiForceMode = "auto" | AIBehavior;
-export const AI_TEST_CONFIG: { forceMode: AiForceMode } = {
+export const AI_TEST_CONFIG: { forceMode: AiForceMode; runSeed: number } = {
   // Default: start in wander+wall-avoid so you can tune driving first.
   forceMode: "auto",
+  /**
+   * Deterministic "run seed" for the AI.
+   * Change this integer (0, 1, 2, 3, ...) to get a different-but-repeatable match.
+   */
+  runSeed: 0,
 };
 
 export const DEBUG_CONFIG = {
