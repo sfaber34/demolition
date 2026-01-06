@@ -3,7 +3,7 @@
 // It uses ageMs counters instead of Date.now() for timing.
 // Math.random() is used here for VFX variety (not in sim layer).
 import { vec } from "../physics/PhysicsEngine";
-import { CarDeathEvent, CarImpactEvent, SimEvent, TireMarkEvent, WallImpactEvent } from "../sim/typesSim";
+import { CarDeathEvent, CarImpactEvent, CarSim, SimEvent, TireMarkEvent, WallImpactEvent } from "../sim/typesSim";
 import {
   DamageNumber,
   EFFECTS_CONFIG,
@@ -89,17 +89,25 @@ function createDamageNumber(position: { x: number; y: number }, damage: number, 
 
 // ============ Event Handlers ============
 
-function handleCarImpact(event: CarImpactEvent, effects: EffectsState): void {
+function handleCarImpact(event: CarImpactEvent, effects: EffectsState, getCarColor: (carId: string) => string): void {
   // Create damage numbers
   if (event.damageA >= 1) {
     // Position slightly offset for visibility
     effects.damageNumbers.push(
-      createDamageNumber({ x: event.contactPoint.x - 15, y: event.contactPoint.y }, event.damageA, "#ff4444"),
+      createDamageNumber(
+        { x: event.contactPoint.x - 15, y: event.contactPoint.y },
+        event.damageA,
+        getCarColor(event.carAId) ?? "#ff4444",
+      ),
     );
   }
   if (event.damageB >= 1) {
     effects.damageNumbers.push(
-      createDamageNumber({ x: event.contactPoint.x + 15, y: event.contactPoint.y }, event.damageB, "#ff4444"),
+      createDamageNumber(
+        { x: event.contactPoint.x + 15, y: event.contactPoint.y },
+        event.damageB,
+        getCarColor(event.carBId) ?? "#ff4444",
+      ),
     );
   }
 
@@ -110,10 +118,12 @@ function handleCarImpact(event: CarImpactEvent, effects: EffectsState): void {
   }
 }
 
-function handleWallImpact(event: WallImpactEvent, effects: EffectsState): void {
+function handleWallImpact(event: WallImpactEvent, effects: EffectsState, getCarColor: (carId: string) => string): void {
   // Create damage number for wall hits
   if (event.damage >= 1) {
-    effects.damageNumbers.push(createDamageNumber(event.contactPoint, event.damage, "#ffaa44"));
+    effects.damageNumbers.push(
+      createDamageNumber(event.contactPoint, event.damage, getCarColor(event.carId) ?? "#ffaa44"),
+    );
   }
 
   // Create sparks
@@ -143,16 +153,23 @@ function handleTireMark(event: TireMarkEvent, effects: EffectsState): void {
  * @param effects - The current effects state (will be mutated)
  * @param events - New simulation events to process
  * @param dtMs - Delta time in milliseconds
+ * @param cars - Optional cars list, used to color effects (e.g. damage numbers) by car color
  */
-export function stepEffects(effects: EffectsState, events: SimEvent[], dtMs: number): void {
+export function stepEffects(effects: EffectsState, events: SimEvent[], dtMs: number, cars?: CarSim[]): void {
+  const carColorById = new Map<string, string>();
+  if (cars) {
+    for (const car of cars) carColorById.set(car.id, car.color);
+  }
+  const getCarColor = (carId: string) => carColorById.get(carId) ?? "#ff4444";
+
   // Process new events
   for (const event of events) {
     switch (event.type) {
       case "car_impact":
-        handleCarImpact(event, effects);
+        handleCarImpact(event, effects, getCarColor);
         break;
       case "wall_impact":
-        handleWallImpact(event, effects);
+        handleWallImpact(event, effects, getCarColor);
         break;
       case "car_death":
         handleCarDeath(event, effects);

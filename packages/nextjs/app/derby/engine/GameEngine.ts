@@ -200,7 +200,7 @@ export class GameEngine {
       // but skip controller updates
       if (this.world.gamePhase === "victory") {
         stepWorldSim(this.world, this.fixedDtMs);
-        stepEffects(this.effects, [], this.fixedDtMs);
+        stepEffects(this.effects, [], this.fixedDtMs, this.world.cars);
         this.accumulator -= this.fixedDtMs;
         continue;
       }
@@ -213,7 +213,7 @@ export class GameEngine {
       const events = stepWorldSim(this.world, this.fixedDtMs);
 
       // 3. Update effects with events
-      stepEffects(this.effects, events, this.fixedDtMs);
+      stepEffects(this.effects, events, this.fixedDtMs, this.world.cars);
 
       this.accumulator -= this.fixedDtMs;
     }
