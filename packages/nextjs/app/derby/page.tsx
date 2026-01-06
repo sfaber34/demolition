@@ -23,7 +23,18 @@ export default function DerbyPage() {
   // Create engine once and store in ref
   const engineRef = useRef<GameEngine | null>(null);
 
-  const [runSeed, setRunSeed] = useState<number>(0);
+  const [runSeedInput, setRunSeedInput] = useState<string>("0");
+
+  const parseRunSeed = (value: string): number | null => {
+    const trimmed = value.trim();
+    if (trimmed === "") return null;
+    if (!/^-?\d+$/.test(trimmed)) return null;
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) return null;
+    return Math.trunc(n);
+  };
+
+  const resolvedRunSeed = parseRunSeed(runSeedInput) ?? 0;
 
   // Get initial snapshot for state
   const [gameSnapshot, setGameSnapshot] = useState<GameSnapshot>(() => {
@@ -83,14 +94,19 @@ export default function DerbyPage() {
     if (!engine) return;
     if (engine.getPhase() !== "title") return;
 
+    // Allow the input to be temporarily empty/invalid while editing (common on iOS).
+    // Only rebuild when we have a valid integer seed.
+    const parsed = parseRunSeed(runSeedInput);
+    if (parsed === null) return;
+
     engine.cleanup();
-    const newEngine = new GameEngine(8, { runSeed });
+    const newEngine = new GameEngine(8, { runSeed: parsed });
     engineRef.current = newEngine;
     setGameSnapshot(newEngine.getSnapshot());
     lastTimeRef.current = 0;
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
     animationRef.current = null;
-  }, [runSeed]);
+  }, [runSeedInput]);
 
   const handleStart = () => {
     const engine = engineRef.current;
@@ -107,7 +123,7 @@ export default function DerbyPage() {
   const handleRestart = () => {
     const engine = engineRef.current;
     if (engine) {
-      engine.restart(runSeed);
+      engine.restart(resolvedRunSeed);
       setGameSnapshot(engine.getSnapshot());
       lastTimeRef.current = 0;
       if (animationRef.current) {
@@ -150,7 +166,7 @@ export default function DerbyPage() {
       {/* Main content */}
       <main className="w-full max-w-4xl flex flex-col items-center">
         {gameSnapshot.gamePhase === "title" && (
-          <TitleScreen onStart={handleStart} runSeed={runSeed} onRunSeedChange={setRunSeed} />
+          <TitleScreen onStart={handleStart} runSeedInput={runSeedInput} onRunSeedInputChange={setRunSeedInput} />
         )}
 
         {gameSnapshot.gamePhase === "gameover" && (
@@ -159,8 +175,8 @@ export default function DerbyPage() {
             cars={gameSnapshot.cars}
             gameTime={gameSnapshot.gameTime}
             onRestart={handleRestart}
-            runSeed={runSeed}
-            onRunSeedChange={setRunSeed}
+            runSeedInput={runSeedInput}
+            onRunSeedInputChange={setRunSeedInput}
           />
         )}
 

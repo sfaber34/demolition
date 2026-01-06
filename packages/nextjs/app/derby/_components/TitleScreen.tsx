@@ -4,11 +4,11 @@ import React from "react";
 
 interface TitleScreenProps {
   onStart: () => void;
-  runSeed: number;
-  onRunSeedChange: (seed: number) => void;
+  runSeedInput: string;
+  onRunSeedInputChange: (seed: string) => void;
 }
 
-export const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, runSeed, onRunSeedChange }) => {
+export const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, runSeedInput, onRunSeedInputChange }) => {
   return (
     <div className="flex flex-col items-center justify-center min-h-[600px] bg-gradient-to-b from-zinc-900 via-amber-950/20 to-zinc-900 rounded-xl border-4 border-amber-900/50 relative overflow-hidden">
       {/* Background pattern */}
@@ -75,9 +75,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, runSeed, onRu
         <label className="flex items-center gap-2 text-zinc-300 font-mono text-sm">
           <span className="text-zinc-500">Run seed</span>
           <input
-            type="number"
-            value={runSeed}
-            onChange={e => onRunSeedChange(Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 0)}
+            type="text"
+            inputMode="numeric"
+            pattern="-?[0-9]*"
+            value={runSeedInput}
+            onChange={e => onRunSeedInputChange(e.target.value)}
             className="w-24 px-2 py-1 rounded-md bg-zinc-900/70 border border-zinc-700 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
         </label>

@@ -8,8 +8,8 @@ interface GameOverScreenProps {
   cars: CarSim[];
   gameTime: number;
   onRestart: () => void;
-  runSeed: number;
-  onRunSeedChange: (seed: number) => void;
+  runSeedInput: string;
+  onRunSeedInputChange: (seed: string) => void;
 }
 
 export const GameOverScreen: React.FC<GameOverScreenProps> = ({
@@ -17,8 +17,8 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
   cars,
   gameTime,
   onRestart,
-  runSeed,
-  onRunSeedChange,
+  runSeedInput,
+  onRunSeedInputChange,
 }) => {
   // Sort cars by damage dealt for final standings
   const sortedCars = [...cars].sort((a, b) => b.damageDealt - a.damageDealt);
@@ -111,9 +111,11 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
         <label className="flex items-center gap-2 text-zinc-300 font-mono text-sm">
           <span className="text-zinc-500">Run seed</span>
           <input
-            type="number"
-            value={runSeed}
-            onChange={e => onRunSeedChange(Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 0)}
+            type="text"
+            inputMode="numeric"
+            pattern="-?[0-9]*"
+            value={runSeedInput}
+            onChange={e => onRunSeedInputChange(e.target.value)}
             className="w-24 px-2 py-1 rounded-md bg-zinc-900/70 border border-zinc-700 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
         </label>
