@@ -66,6 +66,35 @@ Run smart contract test with `yarn hardhat:test`
 - Edit your frontend homepage at `packages/nextjs/app/page.tsx`. For guidance on [routing](https://nextjs.org/docs/app/building-your-application/routing/defining-routes) and configuring [pages/layouts](https://nextjs.org/docs/app/building-your-application/routing/pages-and-layouts) checkout the Next.js documentation.
 - Edit your deployment scripts in `packages/hardhat/deploy`
 
+## Demolition Derby
+
+This repo includes a deterministic “Demolition Derby” game at `http://localhost:3000/derby`.
+
+### Game result endpoint (deterministic)
+
+You can compute the **final outcome** of a derby run very quickly (no rendering) using:
+
+- **GET**: `http://localhost:3000/api/derby/outcome?seed=...`
+- **POST**: `http://localhost:3000/api/derby/outcome`
+
+**Seed formats:**
+
+- **bytes32**: `0x` + 64 hex chars (recommended)
+- **decimal integer string**: any `^-?\d+$` (it’s hashed to bytes32 internally, so there’s no numeric max—practical limits are request size/URL length)
+
+**Examples:**
+
+```bash
+curl "http://localhost:3000/api/derby/outcome?seed=123"
+```
+
+```bash
+curl -X POST "http://localhost:3000/api/derby/outcome" \
+  -H "Content-Type: application/json" \
+  -d '{"seed":"0x0000000000000000000000000000000000000000000000000000000000000042"}'
+```
+
+The response includes the winner (if any), final car states, and timing/tick metadata used to compute the result.
 
 ## Documentation
 
