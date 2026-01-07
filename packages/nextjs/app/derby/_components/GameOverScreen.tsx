@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { parseSeedBytes32 } from "../sim/deterministicRandom";
 import { CarSim } from "../sim/typesSim";
 
 interface GameOverScreenProps {
@@ -20,6 +21,9 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
   runSeedInput,
   onRunSeedInputChange,
 }) => {
+  const resolvedSeed = parseSeedBytes32(runSeedInput);
+  const isIntSeed = /^-?\d+$/.test(runSeedInput.trim());
+
   // Sort cars by damage dealt for final standings
   const sortedCars = [...cars].sort((a, b) => b.damageDealt - a.damageDealt);
 
@@ -107,29 +111,41 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
       </div>
 
       {/* Play again button */}
-      <div className="flex items-center gap-4 flex-wrap justify-center">
-        <label className="flex items-center gap-2 text-zinc-300 font-mono text-sm">
-          <span className="text-zinc-500">Run seed</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="-?[0-9]*"
-            value={runSeedInput}
-            onChange={e => onRunSeedInputChange(e.target.value)}
-            className="w-24 px-2 py-1 rounded-md bg-zinc-900/70 border border-zinc-700 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-          />
-        </label>
-        <button
-          onClick={onRestart}
-          className="group px-10 py-4 bg-gradient-to-b from-green-600 to-green-800 hover:from-green-500 hover:to-green-700 text-white font-black text-xl uppercase tracking-widest rounded-lg border-4 border-green-900 shadow-[0_6px_0_#1a4d1a,0_8px_15px_rgba(0,0,0,0.5)] hover:shadow-[0_4px_0_#1a4d1a,0_6px_10px_rgba(0,0,0,0.5)] hover:translate-y-[2px] transition-all duration-100"
-        >
-          <span className="relative">
-            Play Again
-            <span className="absolute -right-6 top-1/2 -translate-y-1/2 text-yellow-300 group-hover:rotate-45 transition-transform">
-              ⟳
+      <div className="flex flex-col items-center gap-3">
+        <div className="flex items-center gap-4 flex-wrap justify-center">
+          <label className="flex items-center gap-2 text-zinc-300 font-mono text-sm">
+            <span className="text-zinc-500">Run seed</span>
+            <input
+              type="text"
+              value={runSeedInput}
+              onChange={e => onRunSeedInputChange(e.target.value)}
+              placeholder="123 or 0x…"
+              className="w-52 px-2 py-1 rounded-md bg-zinc-900/70 border border-zinc-700 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </label>
+          <button
+            onClick={onRestart}
+            className="group px-10 py-4 bg-gradient-to-b from-green-600 to-green-800 hover:from-green-500 hover:to-green-700 text-white font-black text-xl uppercase tracking-widest rounded-lg border-4 border-green-900 shadow-[0_6px_0_#1a4d1a,0_8px_15px_rgba(0,0,0,0.5)] hover:shadow-[0_4px_0_#1a4d1a,0_6px_10px_rgba(0,0,0,0.5)] hover:translate-y-[2px] transition-all duration-100"
+          >
+            <span className="relative">
+              Play Again
+              <span className="absolute -right-6 top-1/2 -translate-y-1/2 text-yellow-300 group-hover:rotate-45 transition-transform">
+                ⟳
+              </span>
             </span>
-          </span>
-        </button>
+          </button>
+        </div>
+
+        {(resolvedSeed || isIntSeed) && (
+          <div className="text-xs text-zinc-500 font-mono text-center max-w-[520px] px-4">
+            <div className="uppercase tracking-widest text-[10px] text-zinc-600">
+              {isIntSeed ? "Derived bytes32 seed" : "Resolved bytes32 seed"}
+            </div>
+            <div className="text-zinc-300 break-all">
+              {resolvedSeed ?? "Invalid seed (enter an int or 0x + 64 hex)"}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

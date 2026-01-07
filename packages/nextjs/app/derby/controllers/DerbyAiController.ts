@@ -1,9 +1,11 @@
 import { AI_TEST_CONFIG } from "../debug/debugConfig";
 import { getCarCorners, getCarRear, getPointWallDistanceAndNormal, physicsEngine, vec } from "../physics/PhysicsEngine";
+import { ZERO_BYTES32, randFromStream01 } from "../sim/deterministicRandom";
 import type { AIBehavior, CarInput, CarSim, Vector2D, WorldSim } from "../sim/typesSim";
 import { AI_CONFIG, ARENA_CONFIG } from "../sim/typesSim";
 import { aiView, findNearestEnemy } from "./aiHelper";
 import type { CarController } from "./controllerTypes";
+import type { Hex } from "viem";
 
 type AiMode = "auto" | AIBehavior;
 
@@ -55,24 +57,7 @@ function clampInput(input: CarInput): CarInput {
   };
 }
 
-function stableRand01(seed: string): number {
-  // Deterministic pseudo-random in [0,1) from a string seed.
-  // Not cryptographic; just avoids Math.random so behavior is reproducible.
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  // Convert to [0,1)
-  return ((h >>> 0) % 1_000_000) / 1_000_000;
-}
-
-function randFromStream01(runSeed: number, carId: string, stream: string, index: number): number {
-  // Deterministic "infinite array" of [0,1) values. No time component.
-  return stableRand01(`${runSeed}:${carId}:${stream}:${index}`);
-}
-
-function pickWanderWaypoint(carId: string, runSeed: number, pickIndex: number): Vector2D {
+function pickWanderWaypoint(carId: string, runSeed: Hex, pickIndex: number): Vector2D {
   // Pick a point roughly around center but drifting over time.
   const cx = ARENA_CONFIG.width / 2;
   const cy = ARENA_CONFIG.height / 2;
@@ -145,7 +130,7 @@ export class DerbyAiController implements CarController {
   private controlledCars: ControlledCars;
   private memoryByCarId: Map<string, CarMemory> = new Map();
   private lastNowMs: number = 0;
-  private runSeed: number;
+  private runSeed: Hex;
 
   // Make starts look cooler: orbit briefly before engaging.
   private static readonly START_ORBIT_TICKS = 250; // 2000ms / 8ms
@@ -153,13 +138,13 @@ export class DerbyAiController implements CarController {
   private static readonly AUTO_STANCE_TICKS = 625; // 5000ms / 8ms
   private static readonly WAYPOINT_REPICK_TICKS = 175; // 1400ms / 8ms
 
-  constructor(opts: { skipIndices?: number[]; onlyIndices?: number[]; runSeed?: number } = {}) {
+  constructor(opts: { skipIndices?: number[]; onlyIndices?: number[]; runSeed?: Hex } = {}) {
     if (opts.onlyIndices && opts.onlyIndices.length > 0) {
       this.controlledCars = { mode: "onlyIndices", onlyIndices: new Set(opts.onlyIndices) };
     } else {
       this.controlledCars = { mode: "skipIndices", skipIndices: new Set(opts.skipIndices ?? []) };
     }
-    this.runSeed = opts.runSeed ?? 0;
+    this.runSeed = opts.runSeed ?? ZERO_BYTES32;
   }
 
   private shouldControlCarIndex(i: number): boolean {

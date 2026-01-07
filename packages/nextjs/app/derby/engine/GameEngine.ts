@@ -12,8 +12,10 @@ import type { CarController } from "../controllers/controllerTypes";
 import { KeyboardController } from "../controllers/keyboardController";
 import { EffectsState, createEmptyEffectsState } from "../effects/effectsTypes";
 import { snapshotEffects, stepEffects } from "../effects/stepEffects";
+import { ZERO_BYTES32 } from "../sim/deterministicRandom";
 import { stepWorldSim } from "../sim/stepWorldSim";
 import { ARENA_CONFIG, CAR_COLORS, CAR_CONFIG, CAR_NAMES, CarSim, Vector2D, WorldSim } from "../sim/typesSim";
+import type { Hex } from "viem";
 
 // ============ Types for UI Snapshot ============
 
@@ -113,16 +115,16 @@ export class GameEngine {
   private accumulator: number;
   private keyboardController: KeyboardController;
   private aiController: CarController;
-  private runSeed: number;
+  private runSeed: Hex;
   /** Previous car states for render interpolation */
   private previousStates: Map<string, PreviousCarState> = new Map();
 
   // Default to 120Hz physics step. With time-step invariant damping, this improves visual smoothness
   // on high refresh displays without changing feel.
-  constructor(fixedDtMs: number = 8, opts: { runSeed?: number } = {}) {
+  constructor(fixedDtMs: number = 8, opts: { runSeed?: Hex } = {}) {
     this.fixedDtMs = fixedDtMs;
     this.accumulator = 0;
-    this.runSeed = opts.runSeed ?? 0;
+    this.runSeed = opts.runSeed ?? ZERO_BYTES32;
     this.world = this.createInitialWorld();
     this.effects = createEmptyEffectsState();
     // Car 0 is red by default. Keep keyboard controller around for optional testing,
@@ -151,7 +153,7 @@ export class GameEngine {
   }
 
   /** Restart the game with fresh state */
-  restart(runSeed?: number): void {
+  restart(runSeed?: Hex): void {
     if (runSeed !== undefined) {
       this.runSeed = runSeed;
     }

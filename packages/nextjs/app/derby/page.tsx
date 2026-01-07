@@ -19,6 +19,7 @@ import {
 } from "./_components";
 import { DebugOverlay } from "./debug/DebugOverlay";
 import { GameEngine, GameSnapshot } from "./engine/GameEngine";
+import { ZERO_BYTES32, parseSeedBytes32 } from "./sim/deterministicRandom";
 import { ARENA_CONFIG } from "./sim/typesSim";
 
 export default function DerbyPage() {
@@ -26,21 +27,11 @@ export default function DerbyPage() {
   const engineRef = useRef<GameEngine | null>(null);
 
   const [runSeedInput, setRunSeedInput] = useState<string>("0");
-
-  const parseRunSeed = (value: string): number | null => {
-    const trimmed = value.trim();
-    if (trimmed === "") return null;
-    if (!/^-?\d+$/.test(trimmed)) return null;
-    const n = Number(trimmed);
-    if (!Number.isFinite(n)) return null;
-    return Math.trunc(n);
-  };
-
-  const resolvedRunSeed = parseRunSeed(runSeedInput) ?? 0;
+  const resolvedRunSeed = parseSeedBytes32(runSeedInput) ?? ZERO_BYTES32;
 
   // Get initial snapshot for state
   const [gameSnapshot, setGameSnapshot] = useState<GameSnapshot>(() => {
-    const engine = new GameEngine(8, { runSeed: 0 });
+    const engine = new GameEngine(8, { runSeed: ZERO_BYTES32 });
     engineRef.current = engine;
     return engine.getSnapshot();
   });
@@ -97,8 +88,8 @@ export default function DerbyPage() {
     if (engine.getPhase() !== "title") return;
 
     // Allow the input to be temporarily empty/invalid while editing (common on iOS).
-    // Only rebuild when we have a valid integer seed.
-    const parsed = parseRunSeed(runSeedInput);
+    // Only rebuild when we have a valid seed.
+    const parsed = parseSeedBytes32(runSeedInput);
     if (parsed === null) return;
 
     engine.cleanup();
