@@ -1,0 +1,20 @@
+[package]
+name = "derby-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+# Enable WASM bindings for browser usage.
+wasm = ["dep:wasm-bindgen"]
+
+[dependencies]
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.117"
+wasm-bindgen = { version = "0.2.92", optional = true }
+
+

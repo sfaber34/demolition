@@ -18,20 +18,22 @@ import {
   TitleScreen,
 } from "./_components";
 import { DebugOverlay } from "./debug/DebugOverlay";
-import { GameEngine, GameSnapshot } from "./engine/GameEngine";
+import { GameSnapshot } from "./engine/GameEngine";
+import type { IDerbyEngine } from "./engine/IDerbyEngine";
+import { createDerbyEngine, createDerbyEngineAsync } from "./engine/createDerbyEngine";
 import { ZERO_BYTES32, parseSeedBytes32 } from "./sim/deterministicRandom";
 import { ARENA_CONFIG } from "./sim/typesSim";
 
 export default function DerbyPage() {
   // Create engine once and store in ref
-  const engineRef = useRef<GameEngine | null>(null);
+  const engineRef = useRef<IDerbyEngine | null>(null);
 
   const [runSeedInput, setRunSeedInput] = useState<string>("0");
   const resolvedRunSeed = parseSeedBytes32(runSeedInput) ?? ZERO_BYTES32;
 
   // Get initial snapshot for state
   const [gameSnapshot, setGameSnapshot] = useState<GameSnapshot>(() => {
-    const engine = new GameEngine(8, { runSeed: ZERO_BYTES32 });
+    const engine = createDerbyEngine(8, { runSeed: ZERO_BYTES32 });
     engineRef.current = engine;
     return engine.getSnapshot();
   });
@@ -81,6 +83,36 @@ export default function DerbyPage() {
     };
   }, [gameLoop]);
 
+  // Prefer WASM engine once it is async-loaded; keep TS engine as an immediate fallback.
+  useEffect(() => {
+    let cancelled = false;
+
+    const maybeSwapToAsyncEngine = async () => {
+      const current = engineRef.current;
+      // Only swap while on title screen so we don't disrupt an active run.
+      if (!current || current.getPhase() !== "title") return;
+
+      const newEngine = await createDerbyEngineAsync(8, { runSeed: resolvedRunSeed });
+      if (cancelled) {
+        newEngine.cleanup();
+        return;
+      }
+
+      current.cleanup();
+      engineRef.current = newEngine;
+      setGameSnapshot(newEngine.getSnapshot());
+      lastTimeRef.current = 0;
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    };
+
+    void maybeSwapToAsyncEngine();
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally depend on resolvedRunSeed so we load the right seed if user edits before starting.
+  }, [resolvedRunSeed]);
+
   // If the user changes seed on the title screen, rebuild the engine so the very first run uses that seed.
   useEffect(() => {
     const engine = engineRef.current;
@@ -92,13 +124,29 @@ export default function DerbyPage() {
     const parsed = parseSeedBytes32(runSeedInput);
     if (parsed === null) return;
 
-    engine.cleanup();
-    const newEngine = new GameEngine(8, { runSeed: parsed });
-    engineRef.current = newEngine;
-    setGameSnapshot(newEngine.getSnapshot());
-    lastTimeRef.current = 0;
-    if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    animationRef.current = null;
+    let cancelled = false;
+    const rebuild = async () => {
+      const current = engineRef.current;
+      if (!current || current.getPhase() !== "title") return;
+
+      const newEngine = await createDerbyEngineAsync(8, { runSeed: parsed });
+      if (cancelled) {
+        newEngine.cleanup();
+        return;
+      }
+
+      current.cleanup();
+      engineRef.current = newEngine;
+      setGameSnapshot(newEngine.getSnapshot());
+      lastTimeRef.current = 0;
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    };
+
+    void rebuild();
+    return () => {
+      cancelled = true;
+    };
   }, [runSeedInput]);
 
   const handleStart = () => {
