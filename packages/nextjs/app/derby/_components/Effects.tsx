@@ -33,7 +33,7 @@ export const Sparks: React.FC<{ sparks: Spark[] }> = memo(({ sparks }) => (
           key={spark.id}
           cx={spark.position.x}
           cy={spark.position.y}
-          r={2 + lifeRatio * 3}
+          r={1 + lifeRatio * 2}
           fill={spark.color}
           opacity={lifeRatio}
         />

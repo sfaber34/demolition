@@ -35,12 +35,12 @@ interface CarStatusProps {
 function getDebugDisplay(car: CarSim, debugValue: HudDebugValue): { label: string; value: string; color: string } {
   switch (debugValue) {
     case "wallDistance": {
-      const aiState = car.aiState;
+      const speed = getSpeed(car);
 
       return {
-        label: "AI:",
-        value: aiState,
-        color: aiState === "orbiting" ? "#44ff44" : "#ff4444",
+        label: "SPD:",
+        value: speed.toFixed(1),
+        color: getSpeedColor(speed),
       };
     }
     case "speed": {

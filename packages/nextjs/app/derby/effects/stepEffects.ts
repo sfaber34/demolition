@@ -15,7 +15,10 @@ function createSparks(position: { x: number; y: number }, count: number): Spark[
   const sparks: Spark[] = [];
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = 50 + Math.random() * 100;
+    // Keep sparks near the impact point (roughly 50–75px travel) instead of flying off-screen.
+    // With dt=8ms, position step uses (dt/16) scaling and we apply per-tick damping below.
+    const speed = 12 + Math.random() * 6; // 12..18
+    const life = 140 + Math.random() * 60; // 140..200ms
     sparks.push({
       id: generateEffectId(),
       position: { x: position.x, y: position.y },
@@ -23,8 +26,8 @@ function createSparks(position: { x: number; y: number }, count: number): Spark[
         x: Math.cos(angle) * speed,
         y: Math.sin(angle) * speed,
       },
-      life: 300 + Math.random() * 300,
-      maxLife: 500,
+      life,
+      maxLife: life,
       color: EFFECTS_CONFIG.sparkColors[Math.floor(Math.random() * EFFECTS_CONFIG.sparkColors.length)],
     });
   }
@@ -155,7 +158,8 @@ export function stepEffects(effects: EffectsState, events: SimEvent[], dtMs: num
   for (let i = effects.sparks.length - 1; i >= 0; i--) {
     const spark = effects.sparks[i];
     spark.position = vec.add(spark.position, vec.mul(spark.velocity, dtMs / 16));
-    spark.velocity = vec.mul(spark.velocity, 0.95);
+    // Faster damping keeps sparks from traveling too far.
+    spark.velocity = vec.mul(spark.velocity, 0.9);
     spark.life -= dtMs;
 
     if (spark.life <= 0) {
