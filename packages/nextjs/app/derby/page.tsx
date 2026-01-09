@@ -40,6 +40,17 @@ export default function DerbyPage() {
 
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
+  const wallClockStartRef = useRef<number | null>(null);
+  const lastLogWallRef = useRef<number | null>(null);
+  const lastLogSimRef = useRef<number | null>(null);
+  const simTimeRef = useRef<number>(0);
+  const phaseRef = useRef<GameSnapshot["gamePhase"]>("title");
+
+  // Keep latest values in refs for the logger interval (avoid effect re-running every frame).
+  useEffect(() => {
+    simTimeRef.current = gameSnapshot.gameTime;
+    phaseRef.current = gameSnapshot.gamePhase;
+  }, [gameSnapshot.gameTime, gameSnapshot.gamePhase]);
 
   const gameLoop = useCallback((timestamp: number) => {
     const engine = engineRef.current;
@@ -64,6 +75,44 @@ export default function DerbyPage() {
       animationRef.current = null;
     }
   }, []);
+
+  // Log sim-time vs wall-time once per second while running (helps diagnose "game feels faster/slower").
+  useEffect(() => {
+    const phase = phaseRef.current;
+    if (phase !== "playing" && phase !== "victory") {
+      wallClockStartRef.current = null;
+      lastLogWallRef.current = null;
+      lastLogSimRef.current = null;
+      return;
+    }
+
+    if (wallClockStartRef.current === null) wallClockStartRef.current = performance.now();
+
+    const id = window.setInterval(() => {
+      const wallNow = performance.now();
+      const wallStart = wallClockStartRef.current ?? wallNow;
+      const wallElapsedMs = wallNow - wallStart;
+
+      const prevWall = lastLogWallRef.current ?? wallNow;
+      const simNow = simTimeRef.current;
+      const prevSim = lastLogSimRef.current ?? simNow;
+
+      const wallDelta = wallNow - prevWall;
+      const simDelta = simNow - prevSim;
+      const ratio = wallDelta > 0 ? simDelta / wallDelta : 0;
+
+      console.log(
+        `[derby] phase=${phaseRef.current} wallElapsedMs=${wallElapsedMs.toFixed(0)} simTimeMs=${simNow.toFixed(
+          0,
+        )} wallDeltaMs=${wallDelta.toFixed(0)} simDeltaMs=${simDelta.toFixed(0)} ratio=${ratio.toFixed(3)}`,
+      );
+
+      lastLogWallRef.current = wallNow;
+      lastLogSimRef.current = simNow;
+    }, 1000);
+
+    return () => window.clearInterval(id);
+  }, [gameSnapshot.gamePhase]);
 
   useEffect(() => {
     const engine = engineRef.current;
