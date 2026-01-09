@@ -519,6 +519,35 @@ fn inward_normal_at_point(p: Vec2) -> Vec2 {
     normalize(vec_mul(grad, Fx::from_int(-1)))
 }
 
+/// Distance and inward normal from a point to the nearest wall boundary.
+/// - dist: positive when inside, negative when outside (penetration)
+/// - normal: points inward (toward drivable area)
+pub fn point_wall_distance_and_normal(p: Vec2) -> (Fx, Vec2) {
+    let sd = signed_distance_to_inner_boundary(p);
+    let dist = Fx(-sd.0);
+    let normal = inward_normal_at_point(p);
+    (dist, normal)
+}
+
+/// Get distance from a car's nearest corner to the nearest wall (positive inside).
+pub fn car_wall_distance(car: &Car) -> Fx {
+    let corners = get_car_corners(car);
+    let mut best = Fx(i64::MAX);
+    for c in corners.iter() {
+        let (d, _n) = point_wall_distance_and_normal(*c);
+        if d.0 < best.0 {
+            best = d;
+        }
+    }
+    best
+}
+
+/// Get rear center position of a car.
+pub fn car_rear(car: &Car) -> Vec2 {
+    let forward = car_forward(car);
+    vec_sub(car.position, vec_mul(forward, car.width / Fx::from_int(2)))
+}
+
 pub fn check_wall_collision(cars: &[Car; 4], idx: usize) -> Option<WallCollision> {
     let car = &cars[idx];
     if !car.is_alive {

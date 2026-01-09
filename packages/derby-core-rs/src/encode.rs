@@ -1,7 +1,6 @@
 //! Stable binary encoding + state hash (keccak256) for proofs/checkpoints.
 
-use crate::rng::Bytes32;
-use crate::types::{GamePhase, World};
+use crate::types::{Bytes32, GamePhase, World};
 use tiny_keccak::{Hasher, Keccak};
 
 fn keccak256(input: &[u8]) -> Bytes32 {
@@ -28,6 +27,7 @@ pub fn encode_world(world: &World) -> Vec<u8> {
     b.push(world.winner_id);
     b.extend_from_slice(&world.game_time_ms.to_be_bytes());
     b.extend_from_slice(&world.victory_time_ms.to_be_bytes());
+    b.extend_from_slice(&world.run_seed);
 
     for car in world.cars.iter() {
         b.push(car.id);
@@ -61,6 +61,32 @@ pub fn encode_world(world: &World) -> Vec<u8> {
             b.extend_from_slice(&fx.to_be_bytes());
         }
         b.push(car.ai_state);
+        b.push(car.target_id);
+        b.extend_from_slice(&car.tick.to_be_bytes());
+        b.extend_from_slice(&car.evade_until_ms.to_be_bytes());
+        b.extend_from_slice(&car.wall_avoid_until_ms.to_be_bytes());
+        b.extend_from_slice(&car.recover_until_ms.to_be_bytes());
+        b.push(car.recover_mode);
+        b.push(if car.recover_wall_normal_valid { 1 } else { 0 });
+        b.extend_from_slice(&car.recover_wall_normal.x.0.to_be_bytes());
+        b.extend_from_slice(&car.recover_wall_normal.y.0.to_be_bytes());
+        b.push(if car.waypoint_valid { 1 } else { 0 });
+        b.extend_from_slice(&car.waypoint.x.0.to_be_bytes());
+        b.extend_from_slice(&car.waypoint.y.0.to_be_bytes());
+        b.extend_from_slice(&car.next_waypoint_at_tick.to_be_bytes());
+        b.extend_from_slice(&car.waypoint_pick_count.to_be_bytes());
+        b.push(if car.last_pos_for_stuck_valid { 1 } else { 0 });
+        b.extend_from_slice(&car.last_pos_for_stuck.x.0.to_be_bytes());
+        b.extend_from_slice(&car.last_pos_for_stuck.y.0.to_be_bytes());
+        b.extend_from_slice(&car.stuck_for_ms.to_be_bytes());
+        b.push(car.contact_car_id);
+        b.extend_from_slice(&car.contact_for_ms.to_be_bytes());
+        b.push(if car.contact_last_dist_valid { 1 } else { 0 });
+        b.extend_from_slice(&car.contact_last_dist_raw.to_be_bytes());
+        b.extend_from_slice(&car.contact_escape_cooldown_until_ms.to_be_bytes());
+        b.push(car.auto_stance);
+        b.extend_from_slice(&car.auto_stance_until_tick.to_be_bytes());
+        b.extend_from_slice(&car.stance_pick_count.to_be_bytes());
     }
 
     // Collision cooldown matrix (5x5 u32)

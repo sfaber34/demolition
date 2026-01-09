@@ -4,8 +4,7 @@
 //! rng(seed, car_id, stream, index) is O(1) (no need to iterate).
 
 use tiny_keccak::{Hasher, Keccak};
-
-pub type Bytes32 = [u8; 32];
+use crate::types::Bytes32;
 
 fn keccak256(input: &[u8]) -> Bytes32 {
     let mut hasher = Keccak::v256();

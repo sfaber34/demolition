@@ -1,7 +1,7 @@
 use crate::fixed::{Fx, Vec2};
 use crate::types::{
-    Car, GamePhase, World, ARENA_HEIGHT_PX, ARENA_WALL_THICKNESS_PX, ARENA_WIDTH_PX, CAR_COLORS_RGB, CAR_HEIGHT_PX,
-    CAR_MAX_HEALTH, CAR_NAMES, CAR_WIDTH_PX,
+    Bytes32, Car, GamePhase, World, ARENA_HEIGHT_PX, ARENA_WALL_THICKNESS_PX, ARENA_WIDTH_PX, CAR_COLORS_RGB,
+    CAR_HEIGHT_PX, CAR_MAX_HEALTH, CAR_NAMES, CAR_WIDTH_PX,
 };
 
 fn fx_from_f64_const(x: f64) -> Fx {
@@ -47,6 +47,35 @@ fn create_car(id: u8, name_id: u8, position_px: (i64, i64), rotation_rad_raw: i6
         steer: Fx::ZERO,
         ai_state: 0,
         last_position: Vec2::from_ints(position_px.0, position_px.1),
+
+        tick: 0,
+        evade_until_ms: 0,
+        wall_avoid_until_ms: 0,
+        recover_until_ms: 0,
+        recover_mode: 0,
+        recover_wall_normal: Vec2::ZERO,
+        recover_wall_normal_valid: false,
+
+        waypoint: Vec2::ZERO,
+        waypoint_valid: false,
+        next_waypoint_at_tick: 0,
+        waypoint_pick_count: 0,
+
+        last_pos_for_stuck: Vec2::ZERO,
+        last_pos_for_stuck_valid: false,
+        stuck_for_ms: 0,
+
+        contact_car_id: 0,
+        contact_for_ms: 0,
+        contact_last_dist_raw: 0,
+        contact_last_dist_valid: false,
+        contact_escape_cooldown_until_ms: 0,
+
+        auto_stance: 0,
+        auto_stance_until_tick: 0,
+        stance_pick_count: 0,
+
+        target_id: 0,
     }
 }
 
@@ -86,6 +115,7 @@ pub fn create_initial_world() -> World {
         winner_id: 0,
         game_time_ms: 0,
         victory_time_ms: 0,
+        run_seed: [0u8; 32] as Bytes32,
         collision_cooldowns_ms: [[0u32; 5]; 5],
     }
 }

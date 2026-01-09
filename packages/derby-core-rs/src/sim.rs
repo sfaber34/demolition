@@ -29,8 +29,8 @@ pub fn step_world(world: &mut World, dt_ms: u32) {
     }
 
     // Phase 1: Apply inputs and integrate physics
-    // AI/controller update (TODO: replace with full TS parity AI).
-    ai_update(world);
+    // AI/controller update (canonical).
+    ai_update(world, dt_ms);
 
     for car in world.cars.iter_mut() {
         if !car.is_alive {

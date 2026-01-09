@@ -13,7 +13,7 @@ pub use encode::{encode_world, state_hash};
 pub use ai::ai_update;
 pub use init::create_initial_world;
 pub use physics::*;
-pub use rng::{derive_stream_seed, rand_range, rand_u32, Bytes32};
+pub use rng::{derive_stream_seed, rand_range, rand_u32};
 pub use sim::{step_world, VICTORY_DELAY_MS};
 pub use trig::cos_sin;
 pub use types::*;
@@ -43,6 +43,18 @@ mod wasm_api {
             WorldHandle { world: create_initial_world() }
         }
 
+        /// Set run seed from a 0x-prefixed hex string (bytes32). Invalid input => sets to zero.
+        pub fn set_seed_hex(&mut self, seed_hex: String) {
+            self.world.run_seed = parse_hex_bytes32(&seed_hex).unwrap_or([0u8; 32]);
+        }
+
+        /// Create a new world with the given run seed (0x... bytes32).
+        pub fn new_with_seed(seed_hex: String) -> WorldHandle {
+            let mut w = create_initial_world();
+            w.run_seed = parse_hex_bytes32(&seed_hex).unwrap_or([0u8; 32]);
+            WorldHandle { world: w }
+        }
+
         /// Start playing (mirrors TS engine start/restart behavior).
         pub fn start(&mut self) {
             self.world.phase = GamePhase::Playing;
@@ -67,6 +79,20 @@ mod wasm_api {
         pub fn snapshot_json(&self) -> String {
             snapshot_json(&self.world)
         }
+    }
+
+    fn parse_hex_bytes32(s: &str) -> Option<[u8; 32]> {
+        let t = s.trim();
+        let hex = t.strip_prefix("0x").unwrap_or(t);
+        if hex.len() != 64 {
+            return None;
+        }
+        let mut out = [0u8; 32];
+        for i in 0..32 {
+            let byte_str = &hex[i * 2..i * 2 + 2];
+            out[i] = u8::from_str_radix(byte_str, 16).ok()?;
+        }
+        Some(out)
     }
 }
 

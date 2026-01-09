@@ -1,5 +1,8 @@
 use crate::fixed::{Fx, Vec2};
 
+/// 32-byte seed used to drive deterministic AI randomness.
+pub type Bytes32 = [u8; 32];
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum GamePhase {
     Title,
@@ -46,6 +49,38 @@ pub struct Car {
 
   // For stuck detection / parity with TS structures
   pub last_position: Vec2,
+
+  // === AI memory (canonical, deterministic) ===
+  pub tick: u32,
+  pub evade_until_ms: u32,
+  pub wall_avoid_until_ms: u32,
+  pub recover_until_ms: u32,
+  /// 0 none, 1 front, 2 rear
+  pub recover_mode: u8,
+  pub recover_wall_normal: Vec2,
+  pub recover_wall_normal_valid: bool,
+
+  pub waypoint: Vec2,
+  pub waypoint_valid: bool,
+  pub next_waypoint_at_tick: u32,
+  pub waypoint_pick_count: u32,
+
+  pub last_pos_for_stuck: Vec2,
+  pub last_pos_for_stuck_valid: bool,
+  pub stuck_for_ms: u32,
+
+  pub contact_car_id: u8,
+  pub contact_for_ms: u32,
+  pub contact_last_dist_raw: i64,
+  pub contact_last_dist_valid: bool,
+  pub contact_escape_cooldown_until_ms: u32,
+
+  /// 0 orbiting, 1 striking
+  pub auto_stance: u8,
+  pub auto_stance_until_tick: u32,
+  pub stance_pick_count: u32,
+
+  pub target_id: u8,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -55,6 +90,7 @@ pub struct World {
     pub winner_id: u8, // 0 => none
     pub game_time_ms: u32,
     pub victory_time_ms: u32,
+  pub run_seed: Bytes32,
 
   /// Collision cooldowns, keyed by [a][b] (car ids 1..=4). Stored as last-collision time (ms).
   pub collision_cooldowns_ms: [[u32; 5]; 5],
