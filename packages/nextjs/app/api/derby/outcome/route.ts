@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { computeDerbyOutcome } from "~~/app/derby/sim/computeDerbyOutcome";
+import { computeDerbyOutcomeWasm } from "~~/app/derby/engine/wasm/computeDerbyOutcomeWasm";
 import { parseSeedBytes32 } from "~~/app/derby/sim/deterministicRandom";
 
 export const runtime = "nodejs";
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const outcome = computeDerbyOutcome(seed);
+  const outcome = await computeDerbyOutcomeWasm(seed);
   return NextResponse.json(outcome);
 }
 
@@ -72,6 +72,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const outcome = computeDerbyOutcome(seed);
+  const outcome = await computeDerbyOutcomeWasm(seed);
   return NextResponse.json(outcome);
 }

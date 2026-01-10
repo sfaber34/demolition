@@ -96,6 +96,14 @@ curl -X POST "http://localhost:3000/api/derby/outcome" \
 
 The response includes the winner (if any), final car states, and timing/tick metadata used to compute the result.
 
+### Rust/WASM engine notes (deployment)
+
+The derby simulation is now driven by a Rust engine compiled to **WebAssembly (WASM)**. For easy Vercel deploys without installing Rust, the generated wasm-bindgen output is checked in under:
+
+- `packages/nextjs/app/derby/engine/wasm/pkg`
+
+If you update the Rust engine, regenerate that folder (see `packages/nextjs/app/derby/engine/wasm/pkg/README.md`) and commit the changes.
+
 ## Documentation
 
 Visit our [docs](https://docs.scaffoldeth.io) to learn how to start building with Scaffold-ETH 2.
