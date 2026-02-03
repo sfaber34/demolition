@@ -48,6 +48,19 @@ export class KeyboardController implements CarController {
     }
   }
 
+  /** Get current input from keyboard state (for WASM integration) */
+  getInput(): { throttle: number; steer: number } {
+    let throttle = 0;
+    if (this.keys.has("ArrowUp")) throttle += 1;
+    if (this.keys.has("ArrowDown")) throttle -= 1;
+
+    let steer = 0;
+    if (this.keys.has("ArrowLeft")) steer -= 1;
+    if (this.keys.has("ArrowRight")) steer += 1;
+
+    return { throttle, steer };
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   update(world: WorldSim, _dtMs: number, _nowMs: number): void {
     if (world.gamePhase !== "playing") return;
@@ -55,16 +68,6 @@ export class KeyboardController implements CarController {
     const car = world.cars[this.carIndex];
     if (!car || !car.isAlive) return;
 
-    // Calculate throttle from up/down
-    let throttle = 0;
-    if (this.keys.has("ArrowUp")) throttle += 1;
-    if (this.keys.has("ArrowDown")) throttle -= 1;
-
-    // Calculate steer from left/right
-    let steer = 0;
-    if (this.keys.has("ArrowLeft")) steer -= 1;
-    if (this.keys.has("ArrowRight")) steer += 1;
-
-    car.input = { throttle, steer };
+    car.input = this.getInput();
   }
 }

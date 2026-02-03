@@ -1,3 +1,4 @@
+import { KeyboardController } from "../../controllers/keyboardController";
 import { createEmptyEffectsState } from "../../effects/effectsTypes";
 import { snapshotEffects, stepEffects } from "../../effects/stepEffects";
 import { physicsEngine, vec } from "../../physics/PhysicsEngine";
@@ -12,7 +13,7 @@ import type { Hex } from "viem";
 /**
  * WASM-backed derby engine adapter.
  *
- * Current status: scaffolding only. Uses a stub `WorldHandle` until the Rust WASM build is wired.
+ * Uses the Rust WASM simulation core with player keyboard controls for car 0.
  */
 export class WasmDerbyEngine implements IDerbyEngine {
   private fixedDtMs: number;
@@ -29,12 +30,19 @@ export class WasmDerbyEngine implements IDerbyEngine {
   private lastSnapshot: GameSnapshot | null = null;
   private lastCarsForDiff: CarSim[] | null = null;
 
+  // Keyboard controller for player (car 0)
+  private keyboardController: KeyboardController;
+
   constructor(fixedDtMs: number = 8, opts: { runSeed?: Hex } = {}) {
     this.fixedDtMs = fixedDtMs;
     this.runSeed = opts.runSeed ?? ZERO_BYTES32;
     this.world = new WorldHandle();
     // wasm-bindgen typings may lag until you rebuild `pkg/`; use a safe runtime call.
     (this.world as any).set_seed_hex?.(this.runSeed);
+    // Mark car 0 as player-controlled (AI will skip it)
+    (this.world as any).set_player_controlled?.(0, true);
+    // Initialize keyboard controller for car 0
+    this.keyboardController = new KeyboardController(0);
     // Prime snapshot cache
     const snap = this.buildSnapshot();
     this.lastSnapshot = snap;
@@ -52,10 +60,11 @@ export class WasmDerbyEngine implements IDerbyEngine {
   }
 
   restart(runSeed?: Hex): void {
-    // TODO: plumb seed into wasm core init when available (deterministicRandom.ts parseSeedBytes32 output)
     if (runSeed) this.runSeed = runSeed;
     this.world = new WorldHandle();
     (this.world as any).set_seed_hex?.(this.runSeed);
+    // Mark car 0 as player-controlled (AI will skip it)
+    (this.world as any).set_player_controlled?.(0, true);
     this.world.start();
     this.accumulator = 0;
     this.effects = createEmptyEffectsState();
@@ -70,6 +79,10 @@ export class WasmDerbyEngine implements IDerbyEngine {
     // Step in fixed increments for determinism and to match the old engine cadence.
     while (this.accumulator >= this.fixedDtMs) {
       const beforeCars = this.lastCarsForDiff ?? this.buildSnapshot().cars;
+
+      // Send player keyboard input to WASM before stepping
+      const input = this.keyboardController.getInput();
+      (this.world as any).set_car_input?.(0, input.throttle, input.steer);
 
       this.world.step(this.fixedDtMs);
       const after = this.buildSnapshot();
@@ -107,7 +120,7 @@ export class WasmDerbyEngine implements IDerbyEngine {
   }
 
   cleanup(): void {
-    // no-op for now
+    this.keyboardController.cleanup();
   }
 
   private buildSnapshot(): GameSnapshot {

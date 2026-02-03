@@ -94,6 +94,11 @@ pub struct World {
 
   /// Collision cooldowns, keyed by [a][b] (car ids 1..=4). Stored as last-collision time (ms).
   pub collision_cooldowns_ms: [[u32; 5]; 5],
+
+  /// Flags indicating which cars are player-controlled (skip AI for these).
+  /// Index 0..3 corresponds to car indices.
+  #[serde(default)]
+  pub player_controlled: [bool; 4],
 }
 
 // Config values (mirrors TS; will be moved/expanded as port progresses).

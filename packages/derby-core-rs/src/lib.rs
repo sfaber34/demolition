@@ -65,6 +65,25 @@ mod wasm_api {
             step_world(&mut self.world, dt_ms);
         }
 
+        /// Mark a car as player-controlled (AI will skip it).
+        /// car_index: 0-3
+        pub fn set_player_controlled(&mut self, car_index: u8, is_player: bool) {
+            if car_index < 4 {
+                self.world.player_controlled[car_index as usize] = is_player;
+            }
+        }
+
+        /// Set the input (throttle, steer) for a car.
+        /// car_index: 0-3, throttle: -1.0 to 1.5, steer: -1.0 to 1.0
+        /// Call this before step() for player-controlled cars.
+        pub fn set_car_input(&mut self, car_index: u8, throttle: f32, steer: f32) {
+            if car_index < 4 {
+                use crate::fixed::Fx;
+                self.world.cars[car_index as usize].throttle = Fx::from_f64_lossy(throttle as f64);
+                self.world.cars[car_index as usize].steer = Fx::from_f64_lossy(steer as f64);
+            }
+        }
+
         /// Return keccak256 hash of the stable binary encoding of the world.
         pub fn state_hash_hex(&self) -> String {
             let h = state_hash(&self.world);

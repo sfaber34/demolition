@@ -58,11 +58,10 @@ export class GameEngine {
     this.runSeed = opts.runSeed ?? ZERO_BYTES32;
     this.world = this.createInitialWorld();
     this.effects = createEmptyEffectsState();
-    // Car 0 is red by default. Keep keyboard controller around for optional testing,
-    // but by default we let AI drive all cars (including red).
+    // Car 0 is red by default. Player controls car 0 with keyboard.
     this.keyboardController = new KeyboardController(0);
-    // AI drives all cars (0-3)
-    this.aiController = new DerbyAiController({ runSeed: this.runSeed });
+    // AI drives cars 1-3 (skip car 0 for player control)
+    this.aiController = new DerbyAiController({ runSeed: this.runSeed, skipIndices: [0] });
     // Initialize previous states
     this.savePreviousStates();
   }
@@ -87,7 +86,7 @@ export class GameEngine {
     this.accumulator = 0;
     // Important: car IDs are re-used (carIdCounter reset) and gameTime rewinds to 0.
     // Controllers that keep per-car memory keyed by ID must be reset as well.
-    this.aiController = new DerbyAiController({ runSeed: this.runSeed });
+    this.aiController = new DerbyAiController({ runSeed: this.runSeed, skipIndices: [0] });
     this.previousStates.clear();
     this.savePreviousStates();
   }
@@ -136,8 +135,10 @@ export class GameEngine {
       }
 
       // 1. Update controllers (sets car.input)
-      // AI controller handles all cars (including red / car 0)
+      // AI controller handles cars 1-3 (skips car 0)
       this.aiController.update(this.world, this.fixedDtMs, this.world.gameTime);
+      // Keyboard controller handles car 0 (player)
+      this.keyboardController.update(this.world, this.fixedDtMs, this.world.gameTime);
 
       // 2. Step simulation (applies inputs, physics, collisions)
       const events = stepWorldSim(this.world, this.fixedDtMs);

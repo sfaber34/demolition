@@ -117,6 +117,7 @@ pub fn create_initial_world() -> World {
         victory_time_ms: 0,
         run_seed: [0u8; 32] as Bytes32,
         collision_cooldowns_ms: [[0u32; 5]; 5],
+        player_controlled: [false; 4],
     }
 }
 

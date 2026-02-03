@@ -4,8 +4,6 @@ export const memory: WebAssembly.Memory;
 export const __wbg_worldhandle_free: (a: number, b: number) => void;
 export const worldhandle_new: () => number;
 export const worldhandle_new_with_seed: (a: number, b: number) => number;
-export const worldhandle_set_car_input: (a: number, b: number, c: number, d: number) => void;
-export const worldhandle_set_player_controlled: (a: number, b: number, c: number) => void;
 export const worldhandle_set_seed_hex: (a: number, b: number, c: number) => void;
 export const worldhandle_snapshot_json: (a: number) => [number, number];
 export const worldhandle_start: (a: number) => void;

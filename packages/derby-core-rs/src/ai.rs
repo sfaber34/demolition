@@ -115,6 +115,7 @@ fn pick_wander_waypoint(world: &World, car_id: u8, pick_index: u32) -> Vec2 {
 }
 
 /// Update per-car inputs (throttle/steer) for one tick. Canonical behavior.
+/// Skips cars marked as player-controlled in `world.player_controlled`.
 pub fn ai_update(world: &mut World, dt_ms: u32) {
     if !matches!(world.phase, GamePhase::Playing) {
         return;
@@ -123,6 +124,10 @@ pub fn ai_update(world: &mut World, dt_ms: u32) {
     let now_ms = world.game_time_ms;
 
     for i in 0..4 {
+        // Skip player-controlled cars
+        if world.player_controlled[i] {
+            continue;
+        }
         if !world.cars[i].is_alive {
             continue;
         }
