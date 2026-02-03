@@ -267,6 +267,7 @@ export default function DerbyPage() {
             onRestart={handleRestart}
             runSeedInput={runSeedInput}
             onRunSeedInputChange={setRunSeedInput}
+            onGetRecording={() => engineRef.current?.getRecording?.() ?? null}
           />
         )}
 

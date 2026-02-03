@@ -4,6 +4,8 @@ export { HUD } from "./HUD";
 export { StatsPanel } from "./StatsPanel";
 export { TitleScreen } from "./TitleScreen";
 export { GameOverScreen } from "./GameOverScreen";
+export { CopyableTextBox } from "./CopyableTextBox";
+export { FinalStandings, type CarResult } from "./FinalStandings";
 export {
   TireMarks,
   Sparks,

@@ -7,6 +7,7 @@ import type { SimEvent } from "../../sim/typesSim";
 import type { CarSim } from "../../sim/typesSim";
 import type { GameSnapshot } from "../GameEngine";
 import type { IDerbyEngine } from "../IDerbyEngine";
+import { type GameRecording, createEmptyRecording } from "../recording";
 import { WorldHandle } from "./derby_core";
 import type { Hex } from "viem";
 
@@ -14,6 +15,7 @@ import type { Hex } from "viem";
  * WASM-backed derby engine adapter.
  *
  * Uses the Rust WASM simulation core with player keyboard controls for car 0.
+ * Records player inputs for later verification.
  */
 export class WasmDerbyEngine implements IDerbyEngine {
   private fixedDtMs: number;
@@ -33,6 +35,10 @@ export class WasmDerbyEngine implements IDerbyEngine {
   // Keyboard controller for player (car 0)
   private keyboardController: KeyboardController;
 
+  // Input recording for verification
+  private recording: GameRecording;
+  private playerCarIndex = 0;
+
   constructor(fixedDtMs: number = 8, opts: { runSeed?: Hex } = {}) {
     this.fixedDtMs = fixedDtMs;
     this.runSeed = opts.runSeed ?? ZERO_BYTES32;
@@ -40,9 +46,11 @@ export class WasmDerbyEngine implements IDerbyEngine {
     // wasm-bindgen typings may lag until you rebuild `pkg/`; use a safe runtime call.
     (this.world as any).set_seed_hex?.(this.runSeed);
     // Mark car 0 as player-controlled (AI will skip it)
-    (this.world as any).set_player_controlled?.(0, true);
+    (this.world as any).set_player_controlled?.(this.playerCarIndex, true);
     // Initialize keyboard controller for car 0
-    this.keyboardController = new KeyboardController(0);
+    this.keyboardController = new KeyboardController(this.playerCarIndex);
+    // Initialize input recording
+    this.recording = createEmptyRecording(this.runSeed, this.playerCarIndex, this.fixedDtMs);
     // Prime snapshot cache
     const snap = this.buildSnapshot();
     this.lastSnapshot = snap;
@@ -64,10 +72,12 @@ export class WasmDerbyEngine implements IDerbyEngine {
     this.world = new WorldHandle();
     (this.world as any).set_seed_hex?.(this.runSeed);
     // Mark car 0 as player-controlled (AI will skip it)
-    (this.world as any).set_player_controlled?.(0, true);
+    (this.world as any).set_player_controlled?.(this.playerCarIndex, true);
     this.world.start();
     this.accumulator = 0;
     this.effects = createEmptyEffectsState();
+    // Reset input recording for new game
+    this.recording = createEmptyRecording(this.runSeed, this.playerCarIndex, this.fixedDtMs);
     const snap = this.buildSnapshot();
     this.lastSnapshot = snap;
     this.lastCarsForDiff = snap.cars;
@@ -82,7 +92,13 @@ export class WasmDerbyEngine implements IDerbyEngine {
 
       // Send player keyboard input to WASM before stepping
       const input = this.keyboardController.getInput();
-      (this.world as any).set_car_input?.(0, input.throttle, input.steer);
+      (this.world as any).set_car_input?.(this.playerCarIndex, input.throttle, input.steer);
+
+      // Record the input for this tick (only during active gameplay)
+      const phase = this.getPhase();
+      if (phase === "playing") {
+        this.recording.inputs.push([input.throttle, input.steer]);
+      }
 
       this.world.step(this.fixedDtMs);
       const after = this.buildSnapshot();
@@ -121,6 +137,22 @@ export class WasmDerbyEngine implements IDerbyEngine {
 
   cleanup(): void {
     this.keyboardController.cleanup();
+  }
+
+  /**
+   * Get the recorded inputs from this game session.
+   * Call this after the game ends to get the full recording for verification.
+   */
+  getRecording(): GameRecording {
+    return { ...this.recording, inputs: [...this.recording.inputs] };
+  }
+
+  /**
+   * Get the current state hash (keccak256 of world state).
+   * Useful for verification - compare final state hashes.
+   */
+  getStateHash(): Hex {
+    return (this.world.state_hash_hex?.() ?? "0x0") as Hex;
   }
 
   private buildSnapshot(): GameSnapshot {

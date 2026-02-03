@@ -1,8 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import type { GameRecording } from "../engine/recording";
 import { parseSeedBytes32 } from "../sim/deterministicRandom";
 import { CarSim } from "../sim/typesSim";
+import { CopyableTextBox } from "./CopyableTextBox";
+import { type CarResult, FinalStandings } from "./FinalStandings";
 
 interface GameOverScreenProps {
   winner: CarSim | null;
@@ -11,6 +14,8 @@ interface GameOverScreenProps {
   onRestart: () => void;
   runSeedInput: string;
   onRunSeedInputChange: (seed: string) => void;
+  /** Optional callback to get the game recording */
+  onGetRecording?: () => GameRecording | null;
 }
 
 export const GameOverScreen: React.FC<GameOverScreenProps> = ({
@@ -20,18 +25,35 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
   onRestart,
   runSeedInput,
   onRunSeedInputChange,
+  onGetRecording,
 }) => {
+  const [recordingJson, setRecordingJson] = useState<string | null>(null);
   const resolvedSeed = parseSeedBytes32(runSeedInput);
   const isIntSeed = /^-?\d+$/.test(runSeedInput.trim());
-
-  // Sort cars by damage dealt for final standings
-  const sortedCars = [...cars].sort((a, b) => b.damageDealt - a.damageDealt);
 
   const formatTime = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+  };
+
+  // Convert CarSim to CarResult for FinalStandings
+  const carResults: CarResult[] = cars.map(car => ({
+    id: car.id,
+    name: car.name,
+    color: car.color,
+    isAlive: car.isAlive,
+    health: car.health,
+    damageDealt: car.damageDealt,
+  }));
+
+  const handleExportRecording = () => {
+    if (!onGetRecording) return;
+    const recording = onGetRecording();
+    if (recording) {
+      setRecordingJson(JSON.stringify(recording, null, 2));
+    }
   };
 
   return (
@@ -57,58 +79,8 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
       {/* Trophy/crown animation for winner */}
       {winner && <div className="text-6xl mb-6 animate-bounce">🏆</div>}
 
-      {/* Final standings */}
-      <div className="w-full max-w-xl bg-zinc-800/80 rounded-xl border border-zinc-600 p-6 mb-8">
-        <h2 className="text-center text-amber-500 font-bold text-lg mb-4 uppercase tracking-widest">Final Standings</h2>
-        <div className="space-y-3">
-          {sortedCars.map((car, index) => {
-            const isWinner = winner && car.id === winner.id;
-            return (
-              <div
-                key={car.id}
-                className={`flex items-center justify-between p-3 rounded-lg ${
-                  isWinner ? "bg-amber-900/40 border border-amber-600" : "bg-zinc-700/50 border border-zinc-600"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`text-2xl font-black ${
-                      index === 0
-                        ? "text-amber-400"
-                        : index === 1
-                          ? "text-zinc-300"
-                          : index === 2
-                            ? "text-amber-700"
-                            : "text-zinc-500"
-                    }`}
-                  >
-                    #{index + 1}
-                  </span>
-                  <div
-                    className="w-5 h-5 rounded-full border-2 border-zinc-400"
-                    style={{ backgroundColor: car.color }}
-                  />
-                  <span className={`font-bold ${isWinner ? "text-amber-200" : "text-zinc-300"}`}>{car.name}</span>
-                  {isWinner && <span className="text-amber-400 text-sm">👑</span>}
-                  {!car.isAlive && !isWinner && <span className="text-red-400 text-xs">WRECKED</span>}
-                </div>
-                <div className="flex items-center gap-6">
-                  <div className="text-right">
-                    <div className="text-xs text-zinc-500">Damage Dealt</div>
-                    <div className="text-lg font-bold text-orange-400 font-mono">{Math.round(car.damageDealt)}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-zinc-500">Final Health</div>
-                    <div className={`text-lg font-bold font-mono ${car.isAlive ? "text-green-400" : "text-red-400"}`}>
-                      {car.isAlive ? `${Math.round(car.health)}%` : "0%"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* Final standings - using shared component */}
+      <FinalStandings cars={carResults} winnerId={winner?.id} className="mb-8" />
 
       {/* Play again button */}
       <div className="flex flex-col items-center gap-3">
@@ -147,6 +119,29 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
           </div>
         )}
       </div>
+
+      {/* Recording export section */}
+      {onGetRecording && (
+        <div className="w-full max-w-xl mt-8 pt-6 border-t border-zinc-700">
+          <div className="text-center mb-4">
+            <h3 className="text-amber-500 font-bold uppercase tracking-widest text-sm">Game Recording</h3>
+            <p className="text-zinc-500 text-xs mt-1">Export your game inputs for verification</p>
+          </div>
+
+          {!recordingJson ? (
+            <div className="flex justify-center">
+              <button
+                onClick={handleExportRecording}
+                className="px-6 py-3 bg-gradient-to-b from-zinc-600 to-zinc-700 hover:from-zinc-500 hover:to-zinc-600 text-white font-bold uppercase tracking-wider rounded-lg border-2 border-zinc-500 shadow-lg hover:shadow-xl transition-all"
+              >
+                📋 Export Recording
+              </button>
+            </div>
+          ) : (
+            <CopyableTextBox value={recordingJson} label="Game Recording JSON" rows={8} />
+          )}
+        </div>
+      )}
     </div>
   );
 };
